@@ -397,6 +397,25 @@ All PRs must pass CI checks before merging.
 
 ## Roadmap
 
+> **Status:** Phase 1 complete. Phase 2 is the current focus.
+
+### Phase 1: Foundation (Completed)
+
+- [x] **Middleware architecture** - Composable, chained `http.RoundTripper`
+- [x] **Functional options** - Configuration via `WithXxx()`
+- [x] **Optimized transport** - HTTP/2, tuned connection pooling and timeouts
+- [x] **Timeout middleware** - Context-aware, respects shorter deadlines
+- [x] **Retry middleware** - Idempotency-safe with body replay
+- [x] **Backoff strategies** - Constant, linear, exponential, Fibonacci, jitter variants
+- [x] **Circuit breaker** - Closed/Open/Half-Open state machine
+- [x] **Rate limiting** - Token bucket + per-host limiter
+- [x] **Logging middleware** - Pluggable `Logger` interface
+- [x] **Metrics middleware** - Pluggable `MetricsRecorder` interface
+- [x] **Error classification** - Timeout, connection, DNS, TLS, temporary
+- [x] **Fluent API** - Resty-style `RequestBuilder`
+- [x] **Object pooling** - Reduced allocations via `sync.Pool`
+- [x] **Zero dependencies** - Only Go standard library
+
 ### Phase 2: Advanced Resiliency
 
 - [ ] **Circuit breaker per endpoint** - Separate circuit state for each host/path

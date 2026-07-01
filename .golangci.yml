@@ -54,7 +54,7 @@ linters-settings:
     disabled-checks:
       - hugeParam
       - whyNoLint
-      - commentedOutCod
+      - commentedOutCode
 
   gofmt:
     simplify: true

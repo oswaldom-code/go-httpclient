@@ -22,6 +22,7 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
           cache: true
+          cache-dependency-path: go.mod
 
       - name: Download dependencies
         run: go mod download
@@ -48,6 +49,7 @@ jobs:
         with:
           go-version: '1.23'
           cache: true
+          cache-dependency-path: go.mod
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
@@ -67,6 +69,7 @@ jobs:
         with:
           go-version: '1.23'
           cache: true
+          cache-dependency-path: go.mod
 
       - name: Build
         run: go build ./...
@@ -89,6 +92,7 @@ jobs:
         with:
           go-version: '1.23'
           cache: true
+          cache-dependency-path: go.mod
 
       - name: Run benchmarks
         run: go test -bench=. -benchmem ./... | tee benchmark.txt

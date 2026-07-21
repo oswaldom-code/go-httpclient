@@ -319,6 +319,224 @@ func TestCircuitBreaker_ThreadSafety(t *testing.T) {
 	}
 }
 
+// blockingProbe is a transport that fails while half-open is off (to open the
+// circuit), then blocks each admitted request inside the transport until
+// release is closed, signaling entry on entered. It lets a test hold half-open
+// probes in flight to observe concurrent gating.
+type blockingProbe struct {
+	halfOpen atomic.Bool
+	entered  chan struct{}
+	release  chan struct{}
+	probes   int32
+}
+
+func newBlockingProbe() *blockingProbe {
+	return &blockingProbe{
+		entered: make(chan struct{}, 16),
+		release: make(chan struct{}),
+	}
+}
+
+func (b *blockingProbe) rt() internal.RoundTripperFunc {
+	return func(req *http.Request) (*http.Response, error) {
+		if !b.halfOpen.Load() {
+			return nil, errors.New("connection refused")
+		}
+		atomic.AddInt32(&b.probes, 1)
+		b.entered <- struct{}{}
+		<-b.release
+		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
+	}
+}
+
+func openCircuit(t *testing.T, c httpclient.Client, times int) {
+	t.Helper()
+	for i := 0; i < times; i++ {
+		req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+		_, _ = c.Do(context.Background(), req)
+	}
+}
+
+// Regression: half-open must admit only MaxHalfOpenRequests probes (default 1),
+// not every concurrent request. The mutex is released between allowRequest and
+// recordResult, so a naive implementation lets all concurrent requests through.
+func TestCircuitBreaker_HalfOpenAdmitsSingleProbeByDefault(t *testing.T) {
+	bp := newBlockingProbe()
+	c := httpclient.New(
+		httpclient.WithTransport(bp.rt()),
+		httpclient.WithMiddleware(httpclient.CircuitBreaker(httpclient.CircuitBreakerConfig{
+			FailureThreshold: 2,
+			ResetTimeout:     10 * time.Millisecond,
+		})),
+	)
+
+	openCircuit(t, c, 2)
+	time.Sleep(15 * time.Millisecond)
+	bp.halfOpen.Store(true)
+
+	// One probe transitions to half-open and blocks inside the transport.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+		_, _ = c.Do(context.Background(), req)
+	}()
+	<-bp.entered // probe is now in flight; state is Half-Open with one probe
+
+	// While the probe is in flight, further requests must be rejected.
+	for i := 0; i < 5; i++ {
+		req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+		_, err := c.Do(context.Background(), req)
+		if !errors.Is(err, httpclient.ErrCircuitOpen) {
+			t.Fatalf("expected ErrCircuitOpen for concurrent probe, got %v", err)
+		}
+	}
+
+	close(bp.release)
+	wg.Wait()
+
+	if got := atomic.LoadInt32(&bp.probes); got != 1 {
+		t.Fatalf("expected exactly 1 probe to reach the transport, got %d", got)
+	}
+}
+
+func TestCircuitBreaker_HalfOpenRespectsMaxHalfOpenRequests(t *testing.T) {
+	const maxProbes = 3
+	bp := newBlockingProbe()
+	c := httpclient.New(
+		httpclient.WithTransport(bp.rt()),
+		httpclient.WithMiddleware(httpclient.CircuitBreaker(httpclient.CircuitBreakerConfig{
+			FailureThreshold:    2,
+			ResetTimeout:        10 * time.Millisecond,
+			MaxHalfOpenRequests: maxProbes,
+		})),
+	)
+
+	openCircuit(t, c, 2)
+	time.Sleep(15 * time.Millisecond)
+	bp.halfOpen.Store(true)
+
+	// Admit maxProbes concurrent probes; hold them all in flight.
+	var wg sync.WaitGroup
+	for i := 0; i < maxProbes; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+			_, _ = c.Do(context.Background(), req)
+		}()
+	}
+	for i := 0; i < maxProbes; i++ {
+		<-bp.entered
+	}
+
+	// One more must be rejected: the half-open budget is exhausted.
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+	if _, err := c.Do(context.Background(), req); !errors.Is(err, httpclient.ErrCircuitOpen) {
+		t.Fatalf("expected ErrCircuitOpen once %d probes are in flight, got %v", maxProbes, err)
+	}
+
+	close(bp.release)
+	wg.Wait()
+
+	if got := atomic.LoadInt32(&bp.probes); got != maxProbes {
+		t.Fatalf("expected %d probes to reach the transport, got %d", maxProbes, got)
+	}
+}
+
+func TestCircuitBreaker_OneSuccessDoesNotCloseWithThreshold(t *testing.T) {
+	var succeed atomic.Bool
+	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		if succeed.Load() {
+			return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
+		}
+		return nil, errors.New("connection refused")
+	})
+
+	c := httpclient.New(
+		httpclient.WithTransport(rt),
+		httpclient.WithMiddleware(httpclient.CircuitBreaker(httpclient.CircuitBreakerConfig{
+			FailureThreshold: 2,
+			ResetTimeout:     10 * time.Millisecond,
+			SuccessThreshold: 2,
+		})),
+	)
+
+	openCircuit(t, c, 2)
+	time.Sleep(15 * time.Millisecond)
+
+	// First half-open probe succeeds (1 of 2 required).
+	succeed.Store(true)
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+	if _, err := c.Do(context.Background(), req); err != nil {
+		t.Fatalf("first probe should be admitted, got %v", err)
+	}
+
+	// Still half-open: a failing probe must reopen the circuit immediately.
+	succeed.Store(false)
+	req, _ = http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+	_, _ = c.Do(context.Background(), req)
+
+	req, _ = http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+	_, err := c.Do(context.Background(), req)
+	if !errors.Is(err, httpclient.ErrCircuitOpen) {
+		t.Fatalf("one success must not close the circuit when SuccessThreshold=2, got %v", err)
+	}
+}
+
+func TestCircuitBreaker_ClosesAfterSuccessThreshold(t *testing.T) {
+	var succeed atomic.Bool
+	var calls int32
+	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		atomic.AddInt32(&calls, 1)
+		if succeed.Load() {
+			return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
+		}
+		return nil, errors.New("connection refused")
+	})
+
+	c := httpclient.New(
+		httpclient.WithTransport(rt),
+		httpclient.WithMiddleware(httpclient.CircuitBreaker(httpclient.CircuitBreakerConfig{
+			FailureThreshold: 2,
+			ResetTimeout:     10 * time.Millisecond,
+			SuccessThreshold: 2,
+		})),
+	)
+
+	openCircuit(t, c, 2)
+	time.Sleep(15 * time.Millisecond)
+	succeed.Store(true)
+
+	// Two sequential half-open successes close the circuit.
+	for i := 0; i < 2; i++ {
+		req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+		if _, err := c.Do(context.Background(), req); err != nil {
+			t.Fatalf("half-open probe %d should be admitted, got %v", i+1, err)
+		}
+	}
+
+	// Closed: a concurrent burst is no longer gated to a single probe.
+	before := atomic.LoadInt32(&calls)
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+			if _, err := c.Do(context.Background(), req); err != nil {
+				t.Errorf("expected success after circuit closed, got %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if got := atomic.LoadInt32(&calls) - before; got != 10 {
+		t.Fatalf("expected 10 calls to reach the transport once closed, got %d", got)
+	}
+}
+
 func TestCircuitBreaker_CustomIsFailure(t *testing.T) {
 	var calls int32
 	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {

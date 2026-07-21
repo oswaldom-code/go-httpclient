@@ -3,7 +3,9 @@ package httpclient_test
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -79,6 +81,41 @@ func TestTimeout_RespectsExistingShorterDeadline(t *testing.T) {
 	// The captured deadline should match the original context's deadline
 	if !capturedDeadline.Equal(expectedDeadline) {
 		t.Fatalf("expected deadline %v, got %v", expectedDeadline, capturedDeadline)
+	}
+}
+
+func TestTimeout_StreamingBodyReadableAfterReturn(t *testing.T) {
+	const head, tail = "first-chunk-", "second-chunk"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fl, ok := w.(http.Flusher)
+		if !ok {
+			t.Error("ResponseWriter is not a Flusher")
+			return
+		}
+		_, _ = io.WriteString(w, head)
+		fl.Flush()
+		time.Sleep(50 * time.Millisecond)
+		_, _ = io.WriteString(w, tail)
+	}))
+	defer srv.Close()
+
+	c := httpclient.New(
+		httpclient.WithMiddleware(httpclient.Timeout(5 * time.Second)),
+	)
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL, http.NoBody)
+	resp, err := c.Do(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading streamed body after RoundTrip returned: %v", err)
+	}
+	if string(body) != head+tail {
+		t.Fatalf("expected body %q, got %q", head+tail, body)
 	}
 }
 

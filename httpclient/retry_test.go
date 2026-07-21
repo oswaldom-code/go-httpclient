@@ -236,6 +236,45 @@ func TestRetry_RetryableStatusCodes(t *testing.T) {
 	}
 }
 
+func TestRetry_LastAttemptBodyReadable(t *testing.T) {
+	const payload = "final-503-body"
+	var attempts int32
+	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		atomic.AddInt32(&attempts, 1)
+		return &http.Response{
+			StatusCode: http.StatusServiceUnavailable,
+			Body:       io.NopCloser(strings.NewReader(payload)),
+			Request:    req,
+		}, nil
+	})
+
+	c := httpclient.New(
+		httpclient.WithTransport(rt),
+		httpclient.WithMiddleware(httpclient.Retry(httpclient.RetryConfig{
+			MaxAttempts: 3,
+			Backoff:     func(int) time.Duration { return time.Millisecond },
+		})),
+	)
+
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+	resp, err := c.Do(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if attempts != 3 {
+		t.Fatalf("expected 3 attempts, got %d", attempts)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading last-attempt body: %v", err)
+	}
+	if string(body) != payload {
+		t.Fatalf("expected body %q, got %q", payload, body)
+	}
+}
+
 func TestRetry_NonRetryableStatusCode(t *testing.T) {
 	var attempts int32
 	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {

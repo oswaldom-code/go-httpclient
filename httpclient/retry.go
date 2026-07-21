@@ -88,8 +88,10 @@ func (r retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 			return resp, err
 		}
 
-		// Close body before retry to release connection
-		if resp != nil && resp.Body != nil {
+		// Close body before retrying to release the connection. Skip on the
+		// final attempt: that response is returned to the caller, who must be
+		// able to read its body.
+		if attempt < r.cfg.MaxAttempts-1 && resp != nil && resp.Body != nil {
 			_, _ = io.Copy(io.Discard, resp.Body)
 			_ = resp.Body.Close()
 		}

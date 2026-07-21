@@ -2,6 +2,7 @@ package httpclient
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"time"
 )
@@ -30,8 +31,29 @@ func (t timeoutRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, t.timeout)
-	defer cancel()
 
 	req = req.Clone(ctx)
-	return t.next.RoundTrip(req)
+	resp, err := t.next.RoundTrip(req)
+	if err != nil {
+		cancel()
+		return resp, err
+	}
+
+	if resp.Body == nil {
+		cancel()
+		return resp, nil
+	}
+	resp.Body = &cancelBody{ReadCloser: resp.Body, cancel: cancel}
+	return resp, nil
+}
+
+type cancelBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (b *cancelBody) Close() error {
+	err := b.ReadCloser.Close()
+	b.cancel()
+	return err
 }

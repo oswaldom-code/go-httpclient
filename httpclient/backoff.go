@@ -1,7 +1,7 @@
 package httpclient
 
 import (
-	"math/rand/v2"
+	"math/rand"
 	"sync"
 	"time"
 )
@@ -34,9 +34,7 @@ func LinearBackoff(base, maxDuration time.Duration) BackoffFunc {
 func ExponentialBackoff(base, maxDuration time.Duration) BackoffFunc {
 	return func(attempt int) time.Duration {
 		backoff := base * (1 << attempt)
-		if backoff > maxDuration {
-			backoff = maxDuration
-		}
+		backoff = min(backoff, maxDuration)
 		// Add jitter: ±20% (not crypto, just randomization for backoff distribution)
 		jitter := float64(backoff) * 0.2 * (rand.Float64()*2 - 1) //nolint:gosec
 		return backoff + time.Duration(jitter)
@@ -92,9 +90,7 @@ func DecorrelatedJitterBackoff(base, maxDuration time.Duration) BackoffFunc {
 		maxVal := float64(lastBackoff) * 3
 		backoff := time.Duration(minVal + rand.Float64()*(maxVal-minVal)) //nolint:gosec
 
-		if backoff > maxDuration {
-			backoff = maxDuration
-		}
+		backoff = min(backoff, maxDuration)
 		lastBackoff = backoff
 		return backoff
 	}
@@ -106,9 +102,7 @@ func DecorrelatedJitterBackoff(base, maxDuration time.Duration) BackoffFunc {
 func ExponentialBackoffFullJitter(base, maxDuration time.Duration) BackoffFunc {
 	return func(attempt int) time.Duration {
 		ceiling := base * (1 << attempt)
-		if ceiling > maxDuration {
-			ceiling = maxDuration
-		}
+		ceiling = min(ceiling, maxDuration)
 		return time.Duration(rand.Float64() * float64(ceiling)) //nolint:gosec
 	}
 }
@@ -118,9 +112,7 @@ func ExponentialBackoffFullJitter(base, maxDuration time.Duration) BackoffFunc {
 func ExponentialBackoffEqualJitter(base, maxDuration time.Duration) BackoffFunc {
 	return func(attempt int) time.Duration {
 		ceiling := base * (1 << attempt)
-		if ceiling > maxDuration {
-			ceiling = maxDuration
-		}
+		ceiling = min(ceiling, maxDuration)
 		half := ceiling / 2
 		return half + time.Duration(rand.Float64()*float64(half)) //nolint:gosec
 	}

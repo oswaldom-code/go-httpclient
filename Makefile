@@ -25,7 +25,7 @@ RED=\033[0;31m
 NC=\033[0m # No Color
 
 help:
-	@echo "go-httpclient - Production-grade HTTP client for Go"
+	@echo "rhttp - Production-grade HTTP client for Go"
 	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""
@@ -91,7 +91,7 @@ vet:
 
 docs:
 	@echo "$(GREEN)Starting documentation server...$(NC)"
-	@echo "Open http://localhost:8080/github.com/oswaldom-code/go-httpclient/httpclient"
+	@echo "Open http://localhost:8080/github.com/oswaldom-code/rhttp"
 	@if command -v pkgsite >/dev/null 2>&1; then \
 		pkgsite -http=:8080; \
 	else \

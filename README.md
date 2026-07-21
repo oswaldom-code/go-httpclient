@@ -1,11 +1,11 @@
-# go-httpclient
+# rhttp
 
 Production-grade HTTP client for Go with built-in resiliency patterns.
 
-[![CI](https://github.com/oswaldom-code/go-httpclient/actions/workflows/ci.yml/badge.svg)](https://github.com/oswaldom-code/go-httpclient/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/oswaldom-code/go-httpclient/branch/main/graph/badge.svg)](https://codecov.io/gh/oswaldom-code/go-httpclient)
-[![Go Report Card](https://goreportcard.com/badge/github.com/oswaldom-code/go-httpclient)](https://goreportcard.com/report/github.com/oswaldom-code/go-httpclient)
-[![Go Reference](https://pkg.go.dev/badge/github.com/oswaldom-code/go-httpclient.svg)](https://pkg.go.dev/github.com/oswaldom-code/go-httpclient)
+[![CI](https://github.com/oswaldom-code/rhttp/actions/workflows/ci.yml/badge.svg)](https://github.com/oswaldom-code/rhttp/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/oswaldom-code/rhttp/branch/main/graph/badge.svg)](https://codecov.io/gh/oswaldom-code/rhttp)
+[![Go Report Card](https://goreportcard.com/badge/github.com/oswaldom-code/rhttp)](https://goreportcard.com/report/github.com/oswaldom-code/rhttp)
+[![Go Reference](https://pkg.go.dev/badge/github.com/oswaldom-code/rhttp.svg)](https://pkg.go.dev/github.com/oswaldom-code/rhttp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://go.dev/)
 
@@ -28,7 +28,7 @@ Esta librería resuelve ese problema: **resiliencia production-ready con cero de
 | Modo | Cuándo usarlo |
 |------|---------------|
 | `go get` | Proyectos que aceptan dependencias externas |
-| Copiar a `pkg/httpclient` | Políticas estrictas de zero-deps, vendor everything |
+| Copiar a `pkg/rhttp` | Políticas estrictas de zero-deps, vendor everything |
 
 El código está diseñado para funcionar en ambos escenarios sin modificaciones.
 
@@ -46,7 +46,7 @@ El código está diseñado para funcionar en ambos escenarios sin modificaciones
 ## Installation
 
 ```bash
-go get github.com/oswaldom-code/go-httpclient
+go get github.com/oswaldom-code/rhttp
 ```
 
 Requires Go 1.21+
@@ -64,16 +64,16 @@ import (
     "net/http"
     "time"
 
-    "github.com/oswaldom-code/go-httpclient/httpclient"
+    "github.com/oswaldom-code/rhttp"
 )
 
 func main() {
     // Create client with middleware
-    client := httpclient.New(
-        httpclient.WithMiddleware(
-            httpclient.Timeout(5*time.Second),
-            httpclient.Retry(httpclient.RetryConfig{MaxAttempts: 3}),
-            httpclient.CircuitBreaker(httpclient.CircuitBreakerConfig{
+    client := rhttp.New(
+        rhttp.WithMiddleware(
+            rhttp.Timeout(5*time.Second),
+            rhttp.Retry(rhttp.RetryConfig{MaxAttempts: 3}),
+            rhttp.CircuitBreaker(rhttp.CircuitBreakerConfig{
                 FailureThreshold: 5,
                 ResetTimeout:     30*time.Second,
             }),
@@ -95,17 +95,17 @@ func main() {
 ### Fluent API
 
 ```go
-client := httpclient.New()
+client := rhttp.New()
 
 // GET request with query params
-resp, err := httpclient.R(client).
+resp, err := rhttp.R(client).
     SetHeader("Authorization", "Bearer token").
     SetQueryParam("page", "1").
     SetQueryParam("limit", "10").
     Get("https://api.example.com/users")
 
 // POST request with JSON body
-resp, err := httpclient.R(client).
+resp, err := rhttp.R(client).
     SetAuthToken("my-token").
     SetBodyJSON(map[string]string{
         "name":  "John",
@@ -114,7 +114,7 @@ resp, err := httpclient.R(client).
     Post("https://api.example.com/users")
 
 // Path parameters
-resp, err := httpclient.R(client).
+resp, err := rhttp.R(client).
     SetPathParam("org", "acme").
     SetPathParam("repo", "api").
     Get("https://api.github.com/repos/{org}/{repo}")
@@ -125,9 +125,9 @@ resp, err := httpclient.R(client).
 ### Timeout
 
 ```go
-client := httpclient.New(
-    httpclient.WithMiddleware(
-        httpclient.Timeout(5*time.Second),
+client := rhttp.New(
+    rhttp.WithMiddleware(
+        rhttp.Timeout(5*time.Second),
     ),
 )
 ```
@@ -137,12 +137,12 @@ Respects existing context deadlines - uses the shorter of the two.
 ### Retry
 
 ```go
-client := httpclient.New(
-    httpclient.WithMiddleware(
-        httpclient.Retry(httpclient.RetryConfig{
+client := rhttp.New(
+    rhttp.WithMiddleware(
+        rhttp.Retry(rhttp.RetryConfig{
             MaxAttempts:     3,
-            Backoff:         httpclient.ExponentialBackoff(100*time.Millisecond, 10*time.Second),
-            IsRetryable:     httpclient.DefaultIsRetryable, // 429, 502, 503, 504
+            Backoff:         rhttp.ExponentialBackoff(100*time.Millisecond, 10*time.Second),
+            IsRetryable:     rhttp.DefaultIsRetryable, // 429, 502, 503, 504
             RetryAllMethods: false, // Only retry idempotent methods by default
         }),
     ),
@@ -166,12 +166,12 @@ Composable with `WithJitter()`, `WithMin()`, `WithMax()`.
 ### Circuit Breaker
 
 ```go
-client := httpclient.New(
-    httpclient.WithMiddleware(
-        httpclient.CircuitBreaker(httpclient.CircuitBreakerConfig{
+client := rhttp.New(
+    rhttp.WithMiddleware(
+        rhttp.CircuitBreaker(rhttp.CircuitBreakerConfig{
             FailureThreshold: 5,           // Open after 5 consecutive failures
             ResetTimeout:     30*time.Second, // Try half-open after 30s
-            IsFailure:        httpclient.DefaultIsFailure, // Errors + 5xx
+            IsFailure:        rhttp.DefaultIsFailure, // Errors + 5xx
         }),
     ),
 )
@@ -179,17 +179,17 @@ client := httpclient.New(
 
 State machine: `Closed → Open → Half-Open → Closed/Open`
 
-Returns `httpclient.ErrCircuitOpen` when circuit is open.
+Returns `rhttp.ErrCircuitOpen` when circuit is open.
 
 ### Rate Limiting
 
 ```go
 // Token bucket: 100 requests/second, burst of 10
-limiter := httpclient.NewTokenBucket(100, 10)
+limiter := rhttp.NewTokenBucket(100, 10)
 
-client := httpclient.New(
-    httpclient.WithMiddleware(
-        httpclient.RateLimit(httpclient.RateLimitConfig{
+client := rhttp.New(
+    rhttp.WithMiddleware(
+        rhttp.RateLimit(rhttp.RateLimitConfig{
             Limiter:           limiter,
             WaitOnLimit:       true,  // Block until token available
             RespectRetryAfter: true,  // Honor Retry-After header
@@ -198,16 +198,16 @@ client := httpclient.New(
 )
 
 // Per-host rate limiting
-perHostLimiter := httpclient.NewPerHostRateLimiter(50, 5) // 50 req/s per host
+perHostLimiter := rhttp.NewPerHostRateLimiter(50, 5) // 50 req/s per host
 ```
 
 ### Logging
 
 ```go
-client := httpclient.New(
-    httpclient.WithMiddleware(
-        httpclient.Logging(httpclient.LoggingConfig{
-            Logger: httpclient.LoggerFunc(func(e httpclient.LogEntry) {
+client := rhttp.New(
+    rhttp.WithMiddleware(
+        rhttp.Logging(rhttp.LoggingConfig{
+            Logger: rhttp.LoggerFunc(func(e rhttp.LogEntry) {
                 log.Printf("%s %s %d %v", e.Method, e.URL, e.StatusCode, e.Duration)
             }),
             ShouldLog: func(req *http.Request, resp *http.Response, err error) bool {
@@ -221,10 +221,10 @@ client := httpclient.New(
 ### Metrics
 
 ```go
-client := httpclient.New(
-    httpclient.WithMiddleware(
-        httpclient.Metrics(httpclient.MetricsConfig{
-            Recorder: httpclient.MetricsRecorderFunc(func(e httpclient.MetricEvent) {
+client := rhttp.New(
+    rhttp.WithMiddleware(
+        rhttp.Metrics(rhttp.MetricsConfig{
+            Recorder: rhttp.MetricsRecorderFunc(func(e rhttp.MetricEvent) {
                 // Send to Prometheus, StatsD, etc.
                 myCounter.WithLabels(e.Method, e.Host, e.StatusCode).Inc()
                 myHistogram.Observe(e.Duration.Seconds())
@@ -241,25 +241,25 @@ client := httpclient.New(
 ```go
 resp, err := client.Do(ctx, req)
 if err != nil {
-    classified := httpclient.Classify(err)
+    classified := rhttp.Classify(err)
 
     switch classified.Kind {
-    case httpclient.ErrKindTimeout:
+    case rhttp.ErrKindTimeout:
         // Request timed out
-    case httpclient.ErrKindCancelled:
+    case rhttp.ErrKindCancelled:
         // Context was cancelled
-    case httpclient.ErrKindConnection:
+    case rhttp.ErrKindConnection:
         // Connection refused, reset, etc.
-    case httpclient.ErrKindDNS:
+    case rhttp.ErrKindDNS:
         // DNS resolution failed
-    case httpclient.ErrKindTLS:
+    case rhttp.ErrKindTLS:
         // Certificate error
-    case httpclient.ErrKindTemporary:
+    case rhttp.ErrKindTemporary:
         // Temporary error, may resolve on retry
     }
 
     // Or use helpers
-    if httpclient.IsRetryable(err) {
+    if rhttp.IsRetryable(err) {
         // Safe to retry (timeout, connection, DNS, temporary)
     }
 }
@@ -270,14 +270,14 @@ if err != nil {
 Middleware executes in the order specified:
 
 ```go
-client := httpclient.New(
-    httpclient.WithMiddleware(
-        httpclient.Logging(...),        // 1. Log request start
-        httpclient.Metrics(...),        // 2. Start timing
-        httpclient.Timeout(...),        // 3. Apply timeout
-        httpclient.RateLimit(...),      // 4. Check rate limit
-        httpclient.CircuitBreaker(...), // 5. Check circuit
-        httpclient.Retry(...),          // 6. Retry on failure
+client := rhttp.New(
+    rhttp.WithMiddleware(
+        rhttp.Logging(...),        // 1. Log request start
+        rhttp.Metrics(...),        // 2. Start timing
+        rhttp.Timeout(...),        // 3. Apply timeout
+        rhttp.RateLimit(...),      // 4. Check rate limit
+        rhttp.CircuitBreaker(...), // 5. Check circuit
+        rhttp.Retry(...),          // 6. Retry on failure
     ),
 )
 ```
@@ -288,8 +288,8 @@ Recommended order: `Logging → Metrics → Timeout → RateLimit → CircuitBre
 
 ```go
 // Use custom transport
-client := httpclient.New(
-    httpclient.WithTransport(&http.Transport{
+client := rhttp.New(
+    rhttp.WithTransport(&http.Transport{
         MaxIdleConns:        200,
         MaxIdleConnsPerHost: 20,
         IdleConnTimeout:     90*time.Second,
@@ -297,7 +297,7 @@ client := httpclient.New(
 )
 
 // Or use optimized default
-transport := httpclient.DefaultTransport() // HTTP/2 enabled, optimized pool
+transport := rhttp.DefaultTransport() // HTTP/2 enabled, optimized pool
 ```
 
 ## Object Pooling
@@ -306,8 +306,8 @@ Reduce allocations with buffer pooling:
 
 ```go
 // Get a buffer from the pool
-buf := httpclient.GetBuffer()
-defer httpclient.PutBuffer(buf)
+buf := rhttp.GetBuffer()
+defer rhttp.PutBuffer(buf)
 
 buf.WriteString("request body")
 ```
@@ -345,7 +345,7 @@ BenchmarkBackoff_Exponential-12             7 ns/op      0 B/op    0 allocs/op
 
 ## API Reference
 
-See [pkg.go.dev](https://pkg.go.dev/github.com/oswaldom-code/go-httpclient/httpclient) for full API documentation.
+See [pkg.go.dev](https://pkg.go.dev/github.com/oswaldom-code/rhttp) for full API documentation.
 
 ## Development
 

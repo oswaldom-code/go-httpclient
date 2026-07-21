@@ -1,3 +1,3 @@
-module github.com/oswaldom-code/go-httpclient
+module github.com/oswaldom-code/rhttp
 
 go 1.21

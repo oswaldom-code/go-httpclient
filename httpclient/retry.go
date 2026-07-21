@@ -49,14 +49,8 @@ type retryRoundTripper struct {
 	cfg  RetryConfig
 }
 
-//nolint:gocognit // retry logic has inherent complexity
 func (r retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if !r.cfg.RetryAllMethods && !isIdempotent(req.Method) {
-		return r.next.RoundTrip(req)
-	}
-
-	// Cannot retry if body is not replayable (http.NoBody is safe to retry)
-	if req.Body != nil && req.Body != http.NoBody && req.GetBody == nil {
+	if !r.canRetry(req) {
 		return r.next.RoundTrip(req)
 	}
 
@@ -65,20 +59,8 @@ func (r retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 
 	for attempt := 0; attempt < r.cfg.MaxAttempts; attempt++ {
 		if attempt > 0 {
-			// Reset body for retry
-			if req.GetBody != nil {
-				req.Body, err = req.GetBody()
-				if err != nil {
-					return nil, err
-				}
-			}
-
-			// Wait before retry
-			backoff := r.cfg.Backoff(attempt - 1)
-			select {
-			case <-req.Context().Done():
-				return nil, req.Context().Err()
-			case <-time.After(backoff):
+			if err := r.prepareRetry(req, attempt); err != nil {
+				return nil, err
 			}
 		}
 
@@ -88,16 +70,45 @@ func (r retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 			return resp, err
 		}
 
-		// Close body before retrying to release the connection. Skip on the
-		// final attempt: that response is returned to the caller, who must be
-		// able to read its body.
-		if attempt < r.cfg.MaxAttempts-1 && resp != nil && resp.Body != nil {
-			_, _ = io.Copy(io.Discard, resp.Body)
-			_ = resp.Body.Close()
+		if attempt < r.cfg.MaxAttempts-1 {
+			drainAndClose(resp)
 		}
 	}
 
 	return resp, err
+}
+
+func (r retryRoundTripper) canRetry(req *http.Request) bool {
+	if !r.cfg.RetryAllMethods && !isIdempotent(req.Method) {
+		return false
+	}
+
+	return req.Body == nil || req.Body == http.NoBody || req.GetBody != nil
+}
+
+func (r retryRoundTripper) prepareRetry(req *http.Request, attempt int) error {
+	if req.GetBody != nil {
+		body, err := req.GetBody()
+		if err != nil {
+			return err
+		}
+		req.Body = body
+	}
+
+	select {
+	case <-req.Context().Done():
+		return req.Context().Err()
+	case <-time.After(r.cfg.Backoff(attempt - 1)):
+		return nil
+	}
+}
+
+func drainAndClose(resp *http.Response) {
+	if resp == nil || resp.Body == nil {
+		return
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
 }
 
 // isIdempotent returns true for HTTP methods that are safe to retry.

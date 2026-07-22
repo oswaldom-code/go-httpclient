@@ -135,7 +135,7 @@ func isIdempotent(method string) bool {
 // DefaultIsRetryable returns true for transient errors and retryable status codes.
 func DefaultIsRetryable(resp *http.Response, err error) bool {
 	if err != nil {
-		return true
+		return Classify(err).Kind.IsRetryable()
 	}
 	if resp == nil {
 		return false

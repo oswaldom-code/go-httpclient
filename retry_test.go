@@ -3,11 +3,15 @@ package rhttp_test
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -79,7 +83,7 @@ func TestRetry_SuccessAfterRetry(t *testing.T) {
 
 func TestRetry_MaxAttemptsExhausted(t *testing.T) {
 	var attempts int32
-	expectedErr := errors.New("connection refused")
+	expectedErr := syscall.ECONNREFUSED
 	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&attempts, 1)
 		return nil, expectedErr
@@ -129,7 +133,7 @@ func TestRetry_NonIdempotentMethodWithRetryAllMethods(t *testing.T) {
 	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		n := atomic.AddInt32(&attempts, 1)
 		if n < 2 {
-			return nil, errors.New("connection refused")
+			return nil, syscall.ECONNREFUSED
 		}
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
@@ -167,7 +171,7 @@ func TestRetry_ContextCancelledDuringBackoff(t *testing.T) {
 	var attempts int32
 	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&attempts, 1)
-		return nil, errors.New("connection refused")
+		return nil, syscall.ECONNREFUSED
 	})
 
 	c := rhttp.New(
@@ -335,6 +339,47 @@ func TestRetry_NonReplayableBodyNotRetried(t *testing.T) {
 
 	if attempts != 1 {
 		t.Fatalf("expected 1 attempt for non-replayable body, got %d", attempts)
+	}
+}
+
+func TestRetry_RespectsErrorClassification(t *testing.T) {
+	tlsErr := &url.Error{
+		Op:  "Get",
+		URL: "https://example.com",
+		Err: &tls.CertificateVerificationError{},
+	}
+
+	cases := []struct {
+		name     string
+		err      error
+		attempts int32
+	}{
+		{"tls_not_retryable", tlsErr, 1},
+		{"canceled_not_retryable", context.Canceled, 1},
+		{"connection_retryable", syscall.ECONNREFUSED, 3},
+		{"dns_retryable", &net.DNSError{Err: "no such host"}, 3},
+		{"timeout_retryable", context.DeadlineExceeded, 3},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var attempts int32
+			rt := internal.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
+				atomic.AddInt32(&attempts, 1)
+				return nil, tc.err
+			})
+			wrapped := rhttp.Retry(rhttp.RetryConfig{
+				MaxAttempts: 3,
+				Backoff:     func(int) time.Duration { return 0 },
+			})(rt)
+
+			req, _ := http.NewRequest(http.MethodGet, "https://example.com", http.NoBody)
+			_, _ = wrapped.RoundTrip(req)
+
+			if attempts != tc.attempts {
+				t.Fatalf("%s: got %d attempts, want %d", tc.name, attempts, tc.attempts)
+			}
+		})
 	}
 }
 

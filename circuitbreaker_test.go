@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -594,6 +595,42 @@ func TestCircuitBreaker_SharedInstanceSharesState(t *testing.T) {
 	reqB, _ := http.NewRequest(http.MethodGet, "http://b.example", http.NoBody)
 	if _, err := chainB.RoundTrip(reqB); !errors.Is(err, rhttp.ErrCircuitOpen) {
 		t.Fatalf("shared breaker: chain B should see the circuit opened by chain A, got %v", err)
+	}
+}
+
+func TestCircuitBreaker_ClientCancellationsDoNotOpenCircuit(t *testing.T) {
+	rt := rhttp.CircuitBreaker(rhttp.CircuitBreakerConfig{
+		FailureThreshold: 3,
+		ResetTimeout:     time.Hour,
+	})(internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, &url.Error{Op: "Get", URL: req.URL.String(), Err: context.Canceled}
+	}))
+
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+	for i := 0; i < 5; i++ {
+		_, _ = rt.RoundTrip(req)
+	}
+
+	if _, err := rt.RoundTrip(req); errors.Is(err, rhttp.ErrCircuitOpen) {
+		t.Fatal("client cancellations opened the circuit against a healthy upstream")
+	}
+}
+
+func TestCircuitBreaker_TimeoutsOpenCircuit(t *testing.T) {
+	rt := rhttp.CircuitBreaker(rhttp.CircuitBreakerConfig{
+		FailureThreshold: 3,
+		ResetTimeout:     time.Hour,
+	})(internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, &url.Error{Op: "Get", URL: req.URL.String(), Err: context.DeadlineExceeded}
+	}))
+
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+	for i := 0; i < 3; i++ {
+		_, _ = rt.RoundTrip(req)
+	}
+
+	if _, err := rt.RoundTrip(req); !errors.Is(err, rhttp.ErrCircuitOpen) {
+		t.Fatal("timeouts should count as failures and open the circuit")
 	}
 }
 

@@ -38,12 +38,9 @@ type CircuitBreakerConfig struct {
 
 func DefaultIsFailure(resp *http.Response, err error) bool {
 	if err != nil {
-		return true
+		return Classify(err).Kind != ErrKindCanceled
 	}
-	if resp != nil && resp.StatusCode >= 500 {
-		return true
-	}
-	return false
+	return resp != nil && resp.StatusCode >= 500
 }
 
 // newCircuitBreaker applies defaults and returns a circuit-breaker state machine.

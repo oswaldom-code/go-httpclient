@@ -46,8 +46,8 @@ func DefaultIsFailure(resp *http.Response, err error) bool {
 	return false
 }
 
-// CircuitBreaker returns a middleware that implements the circuit breaker pattern.
-func CircuitBreaker(cfg CircuitBreakerConfig) Middleware {
+// newCircuitBreaker applies defaults and returns a circuit-breaker state machine.
+func newCircuitBreaker(cfg CircuitBreakerConfig) *circuitBreaker {
 	if cfg.FailureThreshold <= 0 {
 		cfg.FailureThreshold = 5
 	}
@@ -64,20 +64,17 @@ func CircuitBreaker(cfg CircuitBreakerConfig) Middleware {
 		cfg.SuccessThreshold = 1
 	}
 
-	cb := &circuitBreaker{
-		cfg:   cfg,
-		state: CircuitClosed,
-	}
+	return &circuitBreaker{cfg: cfg, state: CircuitClosed}
+}
 
+func CircuitBreaker(cfg CircuitBreakerConfig) Middleware {
 	return func(next http.RoundTripper) http.RoundTripper {
-		cb.next = next
-		return cb
+		return circuitBreakerRoundTripper{next: next, cb: newCircuitBreaker(cfg)}
 	}
 }
 
 type circuitBreaker struct {
-	next http.RoundTripper
-	cfg  CircuitBreakerConfig
+	cfg CircuitBreakerConfig
 
 	mu               sync.Mutex
 	state            CircuitState
@@ -172,22 +169,45 @@ func (cb *circuitBreaker) recordResult(resp *http.Response, err error) {
 	}
 }
 
-func (cb *circuitBreaker) RoundTrip(req *http.Request) (*http.Response, error) {
-	if !cb.allowRequest() {
-		return nil, ErrCircuitOpen
-	}
-
-	resp, err := cb.next.RoundTrip(req)
-
-	cb.recordResult(resp, err)
-
-	return resp, err
-}
-
 // State returns the current state of the circuit breaker.
 // Useful for monitoring and testing.
 func (cb *circuitBreaker) State() CircuitState {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 	return cb.state
+}
+
+type circuitBreakerRoundTripper struct {
+	next http.RoundTripper
+	cb   *circuitBreaker
+}
+
+func (rt circuitBreakerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if !rt.cb.allowRequest() {
+		return nil, ErrCircuitOpen
+	}
+
+	resp, err := rt.next.RoundTrip(req)
+
+	rt.cb.recordResult(resp, err)
+
+	return resp, err
+}
+
+type SharedCircuitBreaker struct {
+	cb *circuitBreaker
+}
+
+func NewCircuitBreaker(cfg CircuitBreakerConfig) *SharedCircuitBreaker {
+	return &SharedCircuitBreaker{cb: newCircuitBreaker(cfg)}
+}
+
+func (s *SharedCircuitBreaker) Middleware() Middleware {
+	return func(next http.RoundTripper) http.RoundTripper {
+		return circuitBreakerRoundTripper{next: next, cb: s.cb}
+	}
+}
+
+func (s *SharedCircuitBreaker) State() CircuitState {
+	return s.cb.State()
 }

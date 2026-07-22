@@ -537,6 +537,66 @@ func TestCircuitBreaker_ClosesAfterSuccessThreshold(t *testing.T) {
 	}
 }
 
+func TestCircuitBreaker_MiddlewareApplicationsAreIndependent(t *testing.T) {
+	mw := rhttp.CircuitBreaker(rhttp.CircuitBreakerConfig{
+		FailureThreshold: 1,
+		ResetTimeout:     time.Hour,
+	})
+
+	backendErr := errors.New("backend down")
+	failing := internal.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return nil, backendErr
+	})
+	healthy := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody, Request: req}, nil
+	})
+
+	chainA := mw(failing)
+	chainB := mw(healthy)
+
+	reqA, _ := http.NewRequest(http.MethodGet, "http://a.example", http.NoBody)
+	if _, err := chainA.RoundTrip(reqA); !errors.Is(err, backendErr) {
+		t.Fatalf("chain A reached the wrong transport (next overwritten by chain B): err=%v", err)
+	}
+
+	reqB, _ := http.NewRequest(http.MethodGet, "http://b.example", http.NoBody)
+	resp, err := chainB.RoundTrip(reqB)
+	if errors.Is(err, rhttp.ErrCircuitOpen) {
+		t.Fatal("chain B's circuit opened due to chain A's failures: shared state")
+	}
+	if resp == nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("chain B did not reach its own transport: resp=%v err=%v", resp, err)
+	}
+}
+
+func TestCircuitBreaker_SharedInstanceSharesState(t *testing.T) {
+	shared := rhttp.NewCircuitBreaker(rhttp.CircuitBreakerConfig{
+		FailureThreshold: 1,
+		ResetTimeout:     time.Hour,
+	})
+
+	backendErr := errors.New("backend down")
+	failing := internal.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return nil, backendErr
+	})
+	healthy := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody, Request: req}, nil
+	})
+
+	chainA := shared.Middleware()(failing)
+	chainB := shared.Middleware()(healthy)
+
+	reqA, _ := http.NewRequest(http.MethodGet, "http://a.example", http.NoBody)
+	if _, err := chainA.RoundTrip(reqA); !errors.Is(err, backendErr) {
+		t.Fatalf("chain A should reach its failing transport, got %v", err)
+	}
+
+	reqB, _ := http.NewRequest(http.MethodGet, "http://b.example", http.NoBody)
+	if _, err := chainB.RoundTrip(reqB); !errors.Is(err, rhttp.ErrCircuitOpen) {
+		t.Fatalf("shared breaker: chain B should see the circuit opened by chain A, got %v", err)
+	}
+}
+
 func TestCircuitBreaker_CustomIsFailure(t *testing.T) {
 	var calls int32
 	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {

@@ -59,12 +59,17 @@ func (r retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 
 	for attempt := 0; attempt < r.cfg.MaxAttempts; attempt++ {
 		if attempt > 0 {
-			if err := r.prepareRetry(req, attempt); err != nil {
+			if err := r.waitBackoff(req, attempt); err != nil {
 				return nil, err
 			}
 		}
 
-		resp, err = r.next.RoundTrip(req)
+		attemptReq, prepErr := r.prepareRequest(req, attempt)
+		if prepErr != nil {
+			return nil, prepErr
+		}
+
+		resp, err = r.next.RoundTrip(attemptReq)
 
 		if !r.cfg.IsRetryable(resp, err) {
 			return resp, err
@@ -86,15 +91,21 @@ func (r retryRoundTripper) canRetry(req *http.Request) bool {
 	return req.Body == nil || req.Body == http.NoBody || req.GetBody != nil
 }
 
-func (r retryRoundTripper) prepareRetry(req *http.Request, attempt int) error {
-	if req.GetBody != nil {
+func (r retryRoundTripper) prepareRequest(req *http.Request, attempt int) (*http.Request, error) {
+	attemptReq := req.Clone(req.Context())
+
+	if attempt > 0 && req.GetBody != nil {
 		body, err := req.GetBody()
 		if err != nil {
-			return err
+			return nil, err
 		}
-		req.Body = body
+		attemptReq.Body = body
 	}
 
+	return attemptReq, nil
+}
+
+func (r retryRoundTripper) waitBackoff(req *http.Request, attempt int) error {
 	select {
 	case <-req.Context().Done():
 		return req.Context().Err()

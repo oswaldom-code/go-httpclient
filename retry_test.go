@@ -338,6 +338,30 @@ func TestRetry_NonReplayableBodyNotRetried(t *testing.T) {
 	}
 }
 
+func TestRetry_DoesNotMutateOriginalRequest(t *testing.T) {
+	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusServiceUnavailable, Body: http.NoBody, Request: req}, nil
+	})
+	wrapped := rhttp.Retry(rhttp.RetryConfig{
+		MaxAttempts:     3,
+		RetryAllMethods: true,
+		Backoff:         func(int) time.Duration { return 0 },
+	})(rt)
+
+	payload := []byte(`{"x":1}`)
+	orig, _ := http.NewRequest(http.MethodPost, "http://example.com", bytes.NewReader(payload))
+	orig.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(payload)), nil
+	}
+	origBody := orig.Body
+
+	_, _ = wrapped.RoundTrip(orig)
+
+	if orig.Body != origBody {
+		t.Fatal("RoundTrip mutated req.Body of the original request (http.RoundTripper contract)")
+	}
+}
+
 func TestExponentialBackoff(t *testing.T) {
 	backoff := rhttp.ExponentialBackoff(100*time.Millisecond, 1*time.Second)
 

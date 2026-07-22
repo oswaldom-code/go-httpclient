@@ -114,11 +114,13 @@ func (r retryRoundTripper) waitBackoff(req *http.Request, attempt int) error {
 	}
 }
 
+const maxDrainBytes = 256 << 10
+
 func drainAndClose(resp *http.Response) {
 	if resp == nil || resp.Body == nil {
 		return
 	}
-	_, _ = io.Copy(io.Discard, resp.Body)
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxDrainBytes))
 	_ = resp.Body.Close()
 }
 

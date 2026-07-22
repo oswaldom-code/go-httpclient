@@ -342,6 +342,43 @@ func TestRetry_NonReplayableBodyNotRetried(t *testing.T) {
 	}
 }
 
+type countingBody struct {
+	io.Reader
+	read int64
+}
+
+func (c *countingBody) Read(p []byte) (int, error) {
+	n, err := c.Reader.Read(p)
+	c.read += int64(n)
+	return n, err
+}
+
+func (c *countingBody) Close() error { return nil }
+
+func TestRetry_DrainIsBounded(t *testing.T) {
+	body := &countingBody{Reader: strings.NewReader(strings.Repeat("a", 8<<20))}
+	first := true
+	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		if first {
+			first = false
+			return &http.Response{StatusCode: http.StatusServiceUnavailable, Body: body, Request: req}, nil
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody, Request: req}, nil
+	})
+	wrapped := rhttp.Retry(rhttp.RetryConfig{
+		MaxAttempts: 2,
+		Backoff:     func(int) time.Duration { return 0 },
+	})(rt)
+
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+	_, _ = wrapped.RoundTrip(req)
+
+	const maxDrain = 256 << 10
+	if body.read > maxDrain {
+		t.Fatalf("drain read %d bytes of an 8 MB body; max acceptable: %d", body.read, maxDrain)
+	}
+}
+
 func TestRetry_RespectsErrorClassification(t *testing.T) {
 	tlsErr := &url.Error{
 		Op:  "Get",

@@ -254,6 +254,36 @@ func (rb *RequestBuilder) Execute(method, url string) (*http.Response, error) {
 	return rb.execute()
 }
 
+const maxBufferBytes = 10 << 20
+
+func bufferBody(r io.Reader) ([]byte, io.Reader, error) {
+	buf, err := io.ReadAll(io.LimitReader(r, maxBufferBytes+1))
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(buf) > maxBufferBytes {
+		return nil, io.MultiReader(bytes.NewReader(buf), r), nil
+	}
+	return buf, nil, nil
+}
+
+func (rb *RequestBuilder) resolveBody() (io.Reader, []byte, error) {
+	if rb.body == nil {
+		return nil, rb.bodyBytes, nil
+	}
+	if rb.bodyBytes != nil {
+		return rb.body, rb.bodyBytes, nil
+	}
+	buf, stream, err := bufferBody(rb.body)
+	if err != nil {
+		return nil, nil, err
+	}
+	if stream != nil {
+		return stream, nil, nil
+	}
+	return bytes.NewReader(buf), buf, nil
+}
+
 func (rb *RequestBuilder) execute() (*http.Response, error) {
 	if rb.err != nil {
 		return nil, rb.err
@@ -275,9 +305,9 @@ func (rb *RequestBuilder) execute() (*http.Response, error) {
 	}
 
 	// Create body reader
-	var bodyReader io.Reader
-	if rb.body != nil {
-		bodyReader = rb.body
+	bodyReader, bodyBytes, err := rb.resolveBody()
+	if err != nil {
+		return nil, err
 	}
 
 	// Create request
@@ -287,11 +317,11 @@ func (rb *RequestBuilder) execute() (*http.Response, error) {
 	}
 
 	// Set GetBody for retry support
-	if rb.bodyBytes != nil {
+	if bodyBytes != nil {
 		req.GetBody = func() (io.ReadCloser, error) {
-			return io.NopCloser(bytes.NewReader(rb.bodyBytes)), nil
+			return io.NopCloser(bytes.NewReader(bodyBytes)), nil
 		}
-		req.ContentLength = int64(len(rb.bodyBytes))
+		req.ContentLength = int64(len(bodyBytes))
 	}
 
 	// Apply headers

@@ -346,6 +346,43 @@ func TestRequestBuilder_AllMethods(t *testing.T) {
 	}
 }
 
+type opaqueReader struct{ r io.Reader }
+
+func (o *opaqueReader) Read(p []byte) (int, error) { return o.r.Read(p) }
+
+func TestRequestBuilder_ReaderBodyIsRetryable(t *testing.T) {
+	attempts := 0
+	var bodies []string
+	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		attempts++
+		b, _ := io.ReadAll(req.Body)
+		bodies = append(bodies, string(b))
+		return &http.Response{StatusCode: http.StatusServiceUnavailable, Body: http.NoBody}, nil
+	})
+
+	c := rhttp.New(
+		rhttp.WithTransport(rt),
+		rhttp.WithMiddleware(rhttp.Retry(rhttp.RetryConfig{
+			MaxAttempts:     3,
+			RetryAllMethods: true,
+			Backoff:         rhttp.ConstantBackoff(0),
+		})),
+	)
+
+	_, _ = rhttp.R(c).
+		SetBody(&opaqueReader{r: strings.NewReader("payload")}).
+		Post("http://example.com")
+
+	if attempts != 3 {
+		t.Fatalf("opaque reader body disabled retries: got %d attempts, want 3", attempts)
+	}
+	for i, b := range bodies {
+		if b != "payload" {
+			t.Errorf("attempt %d body = %q, want %q", i+1, b, "payload")
+		}
+	}
+}
+
 func BenchmarkRequestBuilder_Simple(b *testing.B) {
 	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil

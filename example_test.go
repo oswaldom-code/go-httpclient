@@ -185,14 +185,3 @@ func ExampleLogging() {
 
 	_ = client // Use client for requests
 }
-
-func ExampleGetBuffer() {
-	// Get a buffer from the pool
-	buf := rhttp.GetBuffer()
-
-	// Use the buffer
-	buf.WriteString("Hello, World!")
-
-	// Return to pool when done
-	rhttp.PutBuffer(buf)
-}

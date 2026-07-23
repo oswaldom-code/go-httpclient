@@ -40,7 +40,6 @@ El código está diseñado para funcionar en ambos escenarios sin modificaciones
 - **Fluent API** - Resty-style request builder
 - **Resiliency patterns** - Retry, circuit breaker, rate limiting, timeout
 - **Multiple backoff strategies** - Constant, linear, exponential, Fibonacci, jitter variants
-- **Object pooling** - Reduced allocations via `sync.Pool`
 - **100% test coverage** - 101 tests
 
 ## Installation
@@ -300,18 +299,6 @@ client := rhttp.New(
 transport := rhttp.DefaultTransport() // HTTP/2 enabled, optimized pool
 ```
 
-## Object Pooling
-
-Reduce allocations with buffer pooling:
-
-```go
-// Get a buffer from the pool
-buf := rhttp.GetBuffer()
-defer rhttp.PutBuffer(buf)
-
-buf.WriteString("request body")
-```
-
 ## Benchmarks
 
 ```
@@ -413,7 +400,6 @@ All PRs must pass CI checks before merging.
 - [x] **Metrics middleware** - Pluggable `MetricsRecorder` interface
 - [x] **Error classification** - Timeout, connection, DNS, TLS, temporary
 - [x] **Fluent API** - Resty-style `RequestBuilder`
-- [x] **Object pooling** - Reduced allocations via `sync.Pool`
 - [x] **Zero dependencies** - Only Go standard library
 
 ### Phase 2: Advanced Resiliency

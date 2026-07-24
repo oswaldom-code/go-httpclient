@@ -62,7 +62,7 @@ test-short:
 
 bench:
 	@echo "$(GREEN)Running benchmarks...$(NC)"
-	$(GOTEST) -bench=. -benchmem $(PACKAGES)
+	$(GOTEST) -bench=. -benchmem -count=5 $(PACKAGES)
 
 bench-compare:
 	@echo "$(GREEN)Running benchmarks for comparison...$(NC)"

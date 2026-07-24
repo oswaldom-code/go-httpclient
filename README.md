@@ -35,7 +35,7 @@ El código está diseñado para funcionar en ambos escenarios sin modificaciones
 ## Features
 
 - **Zero dependencies** - Only Go standard library
-- **Faster than net/http** - 35% faster than `http.Client` baseline
+- **Low overhead** - The full middleware stack adds ~1 μs per request
 - **Middleware architecture** - Composable, testable, extensible
 - **Fluent API** - Resty-style request builder
 - **Resiliency patterns** - Retry, circuit breaker, rate limiting, timeout
@@ -317,25 +317,27 @@ transport := rhttp.DefaultTransport() // HTTP/2 enabled, optimized pool
 
 ## Benchmarks
 
+**Methodology.** These benchmarks run against a no-op transport that returns `200 OK` without touching the network, so they measure **only client and middleware overhead** — not request latency. Run them with `make bench` (`-benchmem -count=5`).
+
 ```
 goos: linux
 goarch: amd64
 cpu: Intel Core i7-1255U
 
-BenchmarkClient_Baseline-12               235 ns/op    656 B/op    4 allocs/op
-BenchmarkStdHttpClient_Baseline-12        317 ns/op    600 B/op    7 allocs/op  (+35%)
-BenchmarkClient_WithRetry-12              265 ns/op    656 B/op    4 allocs/op
-BenchmarkClient_WithCircuitBreaker-12     271 ns/op    656 B/op    4 allocs/op
-BenchmarkClient_AllMiddleware-12         1143 ns/op   1472 B/op   12 allocs/op
-BenchmarkTokenBucket_TryAcquire-12         52 ns/op      0 B/op    0 allocs/op
-BenchmarkBackoff_Exponential-12             7 ns/op      0 B/op    0 allocs/op
+BenchmarkMiddlewareOverhead_Baseline-12          235 ns/op    656 B/op    4 allocs/op
+BenchmarkMiddlewareOverhead_WithRetry-12         265 ns/op    656 B/op    4 allocs/op
+BenchmarkMiddlewareOverhead_WithCircuitBreaker-12 271 ns/op   656 B/op    4 allocs/op
+BenchmarkMiddlewareOverhead_AllMiddleware-12    1143 ns/op   1472 B/op   12 allocs/op
+BenchmarkStdHttpClient_Baseline-12               317 ns/op    600 B/op    7 allocs/op
+BenchmarkTokenBucket_TryAcquire-12                52 ns/op      0 B/op    0 allocs/op
+BenchmarkBackoff_Exponential-12                    7 ns/op      0 B/op    0 allocs/op
 ```
 
 **Key results:**
-- 35% faster than `net/http` client baseline
-- All middleware stack: ~1μs overhead (negligible vs network latency)
-- Rate limiter: 52ns per check, zero allocations
-- Backoff strategies: <10ns, zero allocations
+- Full middleware stack: ~1 μs and ~1.5 KB per request — negligible against network latency (0.5–500 ms)
+- Client wrapper overhead is comparable to a bare `http.Client` over the same transport
+- Rate limiter: 52 ns per check, zero allocations
+- Backoff strategies: <10 ns, zero allocations
 
 ## Design Principles
 

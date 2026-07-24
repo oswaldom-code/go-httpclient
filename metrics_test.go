@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -30,7 +31,8 @@ func TestMetrics_RecordsSuccessfulRequest(t *testing.T) {
 	c := rhttp.New(
 		rhttp.WithTransport(rt),
 		rhttp.WithMiddleware(rhttp.Metrics(rhttp.MetricsConfig{
-			Recorder: recorder,
+			Recorder:       recorder,
+			PathNormalizer: func(p string) string { return p },
 		})),
 	)
 
@@ -60,6 +62,67 @@ func TestMetrics_RecordsSuccessfulRequest(t *testing.T) {
 	}
 	if captured.BytesReceived != 1024 {
 		t.Errorf("expected 1024 bytes received, got %d", captured.BytesReceived)
+	}
+}
+
+func TestMetrics_NilPathNormalizerEmitsEmptyPath(t *testing.T) {
+	var captured rhttp.MetricEvent
+	recorder := rhttp.MetricsRecorderFunc(func(event rhttp.MetricEvent) {
+		captured = event
+	})
+
+	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
+	})
+
+	c := rhttp.New(
+		rhttp.WithTransport(rt),
+		rhttp.WithMiddleware(rhttp.Metrics(rhttp.MetricsConfig{
+			Recorder: recorder,
+		})),
+	)
+
+	req, _ := http.NewRequest(http.MethodGet, "http://api.example.com/users/8f3a/orders/2941", http.NoBody)
+	_, _ = c.Do(context.Background(), req)
+
+	if captured.Path != "" {
+		t.Errorf("expected empty path without normalizer, got %q", captured.Path)
+	}
+	if captured.Host != "api.example.com" {
+		t.Errorf("expected host to still be emitted, got %q", captured.Host)
+	}
+}
+
+func TestMetrics_PathNormalizerTransformsPath(t *testing.T) {
+	var captured rhttp.MetricEvent
+	recorder := rhttp.MetricsRecorderFunc(func(event rhttp.MetricEvent) {
+		captured = event
+	})
+
+	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
+	})
+
+	normalizer := func(p string) string {
+		if strings.HasPrefix(p, "/users/") {
+			return "/users/:id"
+		}
+		return p
+	}
+
+	c := rhttp.New(
+		rhttp.WithTransport(rt),
+		rhttp.WithMiddleware(rhttp.Metrics(rhttp.MetricsConfig{
+			Recorder:       recorder,
+			PathNormalizer: normalizer,
+		})),
+	)
+
+	req, _ := http.NewRequest(http.MethodGet, "http://api.example.com/users/8f3a/profile", http.NoBody)
+	_, _ = c.Do(context.Background(), req)
+
+	if captured.Path != "/users/:id" {
+		t.Errorf("expected normalized path /users/:id, got %q", captured.Path)
 	}
 }
 

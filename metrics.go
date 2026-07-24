@@ -40,6 +40,8 @@ func (f MetricsRecorderFunc) RecordRequest(event MetricEvent) {
 type MetricsConfig struct {
 	// Recorder is the metrics recorder. Required.
 	Recorder MetricsRecorder
+
+	PathNormalizer func(path string) string
 }
 
 // Metrics returns a middleware that records HTTP client metrics.
@@ -52,15 +54,24 @@ func Metrics(cfg MetricsConfig) Middleware {
 
 	return func(next http.RoundTripper) http.RoundTripper {
 		return metricsRoundTripper{
-			next:     next,
-			recorder: cfg.Recorder,
+			next:           next,
+			recorder:       cfg.Recorder,
+			pathNormalizer: cfg.PathNormalizer,
 		}
 	}
 }
 
 type metricsRoundTripper struct {
-	next     http.RoundTripper
-	recorder MetricsRecorder
+	next           http.RoundTripper
+	recorder       MetricsRecorder
+	pathNormalizer func(path string) string
+}
+
+func (m metricsRoundTripper) normalizePath(path string) string {
+	if m.pathNormalizer == nil {
+		return ""
+	}
+	return m.pathNormalizer(path)
 }
 
 func (m metricsRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -73,7 +84,7 @@ func (m metricsRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	event := MetricEvent{
 		Method:   req.Method,
 		Host:     req.URL.Host,
-		Path:     req.URL.Path,
+		Path:     m.normalizePath(req.URL.Path),
 		Duration: duration,
 		Error:    err,
 		Success:  err == nil && resp != nil && resp.StatusCode < 500,

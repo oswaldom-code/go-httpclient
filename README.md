@@ -235,6 +235,22 @@ client := rhttp.New(
 
 `MetricEvent` fields: `Method`, `Host`, `Path`, `StatusCode`, `Duration`, `BytesSent`, `BytesReceived`, `Error`, `Success`
 
+#### Path cardinality
+
+Exporting a raw request path (`/users/8f3a.../orders/2941`) as a metrics label creates one time series per ID, which grows Prometheus memory without bound. To prevent this, `Path` is **empty by default** and is only populated when you provide a `PathNormalizer` that collapses high-cardinality segments to a template:
+
+```go
+rhttp.Metrics(rhttp.MetricsConfig{
+    Recorder: recorder,
+    PathNormalizer: func(p string) string {
+        // /users/8f3a/orders/2941 -> /users/:id/orders/:id
+        return idSegment.ReplaceAllString(p, "/:id")
+    },
+})
+```
+
+To emit the raw path anyway (not recommended as a metrics label), use `func(p string) string { return p }`.
+
 ## Error Classification
 
 ```go

@@ -11,26 +11,26 @@ Production-grade HTTP client for Go with built-in resiliency patterns.
 
 ## Motivation
 
-Después de implementar clientes HTTP con patrones de resiliencia en múltiples proyectos
-de microservicios, identificé un patrón recurrente:
+After building HTTP clients with resiliency patterns across multiple microservice
+projects, a recurring pattern emerged:
 
-1. **La stdlib no es suficiente** - `net/http` es potente pero no incluye retry,
-   circuit breaker ni rate limiting
-2. **Las dependencias son un problema** - Librerías como Resty traen dependencias
-   transitivas que complican auditorías de seguridad y aumentan el tamaño del binario
-3. **Reinventar la rueda es costoso** - Cada equipo termina escribiendo su propio
-   wrapper con bugs sutiles en manejo de contextos, timeouts y connection pooling
+1. **The stdlib is not enough** - `net/http` is powerful but ships no retry,
+   circuit breaker, or rate limiting
+2. **Dependencies are a liability** - Libraries like Resty pull in transitive
+   dependencies that complicate security audits and grow the binary size
+3. **Reinventing the wheel is costly** - Every team ends up writing its own
+   wrapper with subtle bugs in context handling, timeouts, and connection pooling
 
-Esta librería resuelve ese problema: **resiliencia production-ready con cero dependencias**.
+This library solves that: **production-ready resiliency with zero dependencies**.
 
 ### Usage Modes
 
-| Modo | Cuándo usarlo |
-|------|---------------|
-| `go get` | Proyectos que aceptan dependencias externas |
-| Copiar a `pkg/rhttp` | Políticas estrictas de zero-deps, vendor everything |
+| Mode | When to use it |
+|------|----------------|
+| `go get` | Projects that accept external dependencies |
+| Copy into `pkg/rhttp` | Strict zero-deps policies, vendor everything |
 
-El código está diseñado para funcionar en ambos escenarios sin modificaciones.
+The code is designed to work in both scenarios without modification.
 
 ## Features
 

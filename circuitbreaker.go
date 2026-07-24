@@ -191,20 +191,30 @@ func (rt circuitBreakerRoundTripper) RoundTrip(req *http.Request) (*http.Respons
 	return resp, err
 }
 
+// SharedCircuitBreaker is a circuit breaker whose state can be shared across
+// multiple middleware applications or clients. Unlike the CircuitBreaker
+// middleware, which creates an independent breaker per application, all
+// middleware derived from the same SharedCircuitBreaker observe the same state.
 type SharedCircuitBreaker struct {
 	cb *circuitBreaker
 }
 
+// NewCircuitBreaker creates a SharedCircuitBreaker with the given configuration,
+// applying defaults for any zero-valued fields. Use it when several clients must
+// trip together against the same dependency.
 func NewCircuitBreaker(cfg CircuitBreakerConfig) *SharedCircuitBreaker {
 	return &SharedCircuitBreaker{cb: newCircuitBreaker(cfg)}
 }
 
+// Middleware returns a Middleware backed by this shared breaker. Applying it to
+// multiple clients makes them share a single circuit state.
 func (s *SharedCircuitBreaker) Middleware() Middleware {
 	return func(next http.RoundTripper) http.RoundTripper {
 		return circuitBreakerRoundTripper{next: next, cb: s.cb}
 	}
 }
 
+// State returns the current state of the shared circuit breaker.
 func (s *SharedCircuitBreaker) State() CircuitState {
 	return s.cb.State()
 }

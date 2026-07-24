@@ -41,6 +41,11 @@ type MetricsConfig struct {
 	// Recorder is the metrics recorder. Required.
 	Recorder MetricsRecorder
 
+	// PathNormalizer maps a request path to the value emitted as MetricEvent.Path.
+	// It exists to bound label cardinality: raw paths like /users/8f3a/orders/2941
+	// would create one time series per ID. If nil, Path is emitted empty; to collapse
+	// high-cardinality segments, provide a function that returns a template such as
+	// /users/:id/orders/:id.
 	PathNormalizer func(path string) string
 }
 

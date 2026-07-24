@@ -149,6 +149,10 @@ func (rb *RequestBuilder) SetPathParams(params map[string]string) *RequestBuilde
 }
 
 // SetBody sets the request body from a reader.
+//
+// The reader is buffered up to 10 MB so the body can be rewound and the request
+// retried. If the body exceeds 10 MB it is streamed instead: the request is sent
+// once and is not retried, since the reader cannot be replayed.
 func (rb *RequestBuilder) SetBody(body io.Reader) *RequestBuilder {
 	rb.body = body
 	return rb

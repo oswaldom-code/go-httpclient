@@ -90,8 +90,11 @@ func MyMiddleware(cfg Config) Middleware {
 ## Recommended Middleware Order
 
 ```go
-Logging → Metrics → Timeout → RateLimit → CircuitBreaker → Retry
+Logging → Metrics → Timeout → RateLimit → Retry → CircuitBreaker
 ```
+
+Retry sits outside CircuitBreaker so every attempt consults the circuit: a
+tripped breaker short-circuits the remaining attempts.
 
 ## Pre-Commit Checklist
 

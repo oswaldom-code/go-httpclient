@@ -27,7 +27,7 @@
 // Middleware wraps http.RoundTripper to add cross-cutting concerns. The recommended
 // order from outermost to innermost is:
 //
-//	Logging -> Metrics -> Timeout -> RateLimit -> CircuitBreaker -> Retry
+//	Logging -> Metrics -> Timeout -> RateLimit -> Retry -> CircuitBreaker
 //
 // Available middleware:
 //   - [Timeout]: Enforces request timeouts

@@ -291,13 +291,13 @@ client := rhttp.New(
         rhttp.Metrics(...),        // 2. Start timing
         rhttp.Timeout(...),        // 3. Apply timeout
         rhttp.RateLimit(...),      // 4. Check rate limit
-        rhttp.CircuitBreaker(...), // 5. Check circuit
-        rhttp.Retry(...),          // 6. Retry on failure
+        rhttp.Retry(...),          // 5. Retry on failure
+        rhttp.CircuitBreaker(...), // 6. Check circuit per attempt
     ),
 )
 ```
 
-Recommended order: `Logging → Metrics → Timeout → RateLimit → CircuitBreaker → Retry`
+Recommended order: `Logging → Metrics → Timeout → RateLimit → Retry → CircuitBreaker`
 
 ### Timeout placement changes its meaning
 
@@ -314,7 +314,7 @@ See the runnable `ExampleRetry_totalBudget` and `ExampleRetry_perAttemptTimeout`
 
 | Order | Effect |
 |-------|--------|
-| `Retry → CircuitBreaker` (retry outer) | Each attempt consults the circuit; a tripped breaker short-circuits the remaining attempts. The circuit counts every attempt. |
+| `Retry → CircuitBreaker` (retry outer) **— recommended** | Each attempt consults the circuit; a tripped breaker short-circuits the remaining attempts. The circuit counts every attempt. |
 | `CircuitBreaker → Retry` (breaker outer) | The circuit sees one fully-retried request as a single call; retries are not individually gated by the breaker. |
 
 ## Custom Transport

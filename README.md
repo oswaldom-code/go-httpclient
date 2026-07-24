@@ -40,7 +40,7 @@ El código está diseñado para funcionar en ambos escenarios sin modificaciones
 - **Fluent API** - Resty-style request builder
 - **Resiliency patterns** - Retry, circuit breaker, rate limiting, timeout
 - **Multiple backoff strategies** - Constant, linear, exponential, Fibonacci, jitter variants
-- **100% test coverage** - 101 tests
+- **Well tested** - Race-clean suite; live coverage in the Codecov badge above
 
 ## Installation
 

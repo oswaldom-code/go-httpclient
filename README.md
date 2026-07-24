@@ -282,7 +282,7 @@ if err != nil {
 
 ## Middleware Order
 
-Middleware executes in the order specified:
+The **first middleware in the list is the outermost**: it runs first on the way in and last on the way out. Each subsequent middleware wraps the ones after it, and the transport sits at the center.
 
 ```go
 client := rhttp.New(
@@ -298,6 +298,24 @@ client := rhttp.New(
 ```
 
 Recommended order: `Logging → Metrics → Timeout → RateLimit → CircuitBreaker → Retry`
+
+### Timeout placement changes its meaning
+
+Where you put `Timeout` relative to `Retry` selects one of two semantics — both valid, but very different:
+
+| Pattern | Order | Meaning |
+|---------|-------|---------|
+| **Total budget** | `Timeout → Retry` | The timeout covers **all attempts and their backoffs combined**. Once it expires, no further retries happen. |
+| **Per-attempt timeout** | `Retry → Timeout` | Each attempt gets its **own fresh timeout**; the total wall-clock time is roughly `attempts × timeout` plus backoffs. |
+
+See the runnable `ExampleRetry_totalBudget` and `ExampleRetry_perAttemptTimeout` for both wirings.
+
+### Retry vs CircuitBreaker
+
+| Order | Effect |
+|-------|--------|
+| `Retry → CircuitBreaker` (retry outer) | Each attempt consults the circuit; a tripped breaker short-circuits the remaining attempts. The circuit counts every attempt. |
+| `CircuitBreaker → Retry` (breaker outer) | The circuit sees one fully-retried request as a single call; retries are not individually gated by the breaker. |
 
 ## Custom Transport
 

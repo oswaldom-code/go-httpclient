@@ -185,3 +185,55 @@ func ExampleLogging() {
 
 	_ = client // Use client for requests
 }
+
+func ExampleRetry_totalBudget() {
+	client := rhttp.New(
+		rhttp.WithMiddleware(
+			rhttp.Timeout(5*time.Second),
+			rhttp.Retry(rhttp.RetryConfig{
+				MaxAttempts: 3,
+				Backoff:     rhttp.ExponentialBackoff(100*time.Millisecond, 2*time.Second),
+			}),
+			rhttp.CircuitBreaker(rhttp.CircuitBreakerConfig{
+				FailureThreshold: 5,
+				ResetTimeout:     30 * time.Second,
+			}),
+		),
+	)
+
+	req, _ := http.NewRequest("GET", "https://api.example.com/users", http.NoBody)
+	resp, err := client.Do(context.Background(), req)
+	if err != nil {
+		fmt.Println("request failed:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	fmt.Println("Status:", resp.StatusCode)
+}
+
+func ExampleRetry_perAttemptTimeout() {
+	client := rhttp.New(
+		rhttp.WithMiddleware(
+			rhttp.Retry(rhttp.RetryConfig{
+				MaxAttempts: 3,
+				Backoff:     rhttp.ExponentialBackoff(100*time.Millisecond, 2*time.Second),
+			}),
+			rhttp.Timeout(2*time.Second),
+			rhttp.CircuitBreaker(rhttp.CircuitBreakerConfig{
+				FailureThreshold: 5,
+				ResetTimeout:     30 * time.Second,
+			}),
+		),
+	)
+
+	req, _ := http.NewRequest("GET", "https://api.example.com/users", http.NoBody)
+	resp, err := client.Do(context.Background(), req)
+	if err != nil {
+		fmt.Println("request failed:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	fmt.Println("Status:", resp.StatusCode)
+}

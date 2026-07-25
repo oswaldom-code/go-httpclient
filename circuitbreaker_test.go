@@ -117,7 +117,7 @@ func TestCircuitBreaker_TransitionsToHalfOpenAfterTimeout(t *testing.T) {
 	}
 
 	// Wait for reset timeout
-	time.Sleep(60 * time.Millisecond)
+	time.Sleep(110 * time.Millisecond)
 
 	// Now circuit should be half-open, next request goes through
 	shouldSucceed = true
@@ -157,7 +157,7 @@ func TestCircuitBreaker_HalfOpenSuccessCloses(t *testing.T) {
 	}
 
 	// Wait for half-open
-	time.Sleep(15 * time.Millisecond)
+	time.Sleep(60 * time.Millisecond)
 
 	// Success in half-open should close circuit
 	req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
@@ -196,7 +196,7 @@ func TestCircuitBreaker_HalfOpenFailureReopens(t *testing.T) {
 	}
 
 	// Wait for half-open
-	time.Sleep(15 * time.Millisecond)
+	time.Sleep(60 * time.Millisecond)
 
 	// Failure in half-open should reopen circuit
 	req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
@@ -396,7 +396,7 @@ func TestCircuitBreaker_HalfOpenAdmitsSingleProbeByDefault(t *testing.T) {
 	)
 
 	openCircuit(t, c, 2)
-	time.Sleep(15 * time.Millisecond)
+	time.Sleep(60 * time.Millisecond)
 	bp.halfOpen.Store(true)
 
 	// One probe transitions to half-open and blocks inside the transport.
@@ -439,7 +439,7 @@ func TestCircuitBreaker_HalfOpenRespectsMaxHalfOpenRequests(t *testing.T) {
 	)
 
 	openCircuit(t, c, 2)
-	time.Sleep(15 * time.Millisecond)
+	time.Sleep(60 * time.Millisecond)
 	bp.halfOpen.Store(true)
 
 	// Admit maxProbes concurrent probes; hold them all in flight.
@@ -489,7 +489,7 @@ func TestCircuitBreaker_OneSuccessDoesNotCloseWithThreshold(t *testing.T) {
 	)
 
 	openCircuit(t, c, 2)
-	time.Sleep(15 * time.Millisecond)
+	time.Sleep(60 * time.Millisecond)
 
 	// First half-open probe succeeds (1 of 2 required).
 	succeed.Store(true)
@@ -531,7 +531,7 @@ func TestCircuitBreaker_ClosesAfterSuccessThreshold(t *testing.T) {
 	)
 
 	openCircuit(t, c, 2)
-	time.Sleep(15 * time.Millisecond)
+	time.Sleep(60 * time.Millisecond)
 	succeed.Store(true)
 
 	// Two sequential half-open successes close the circuit.
@@ -791,7 +791,7 @@ func TestCircuitBreaker_StaleResultDoesNotCloseHalfOpen(t *testing.T) {
 	}
 
 	// 3. After the reset timeout, admit a probe; hold it in flight (Half-Open).
-	time.Sleep(15 * time.Millisecond)
+	time.Sleep(60 * time.Millisecond)
 	wg.Add(1)
 	go func() { defer wg.Done(); do("probe") }()
 	<-enteredC
@@ -856,5 +856,47 @@ func TestCircuitBreaker_OpenClosesRequestBody(t *testing.T) {
 	}
 	if !rec.closed {
 		t.Error("request body was not closed on circuit-open short-circuit")
+	}
+}
+
+func TestSharedCircuitBreaker_StateObservesTransitions(t *testing.T) {
+	bp := newBlockingProbe()
+	shared := rhttp.NewCircuitBreaker(rhttp.CircuitBreakerConfig{
+		FailureThreshold: 2,
+		ResetTimeout:     10 * time.Millisecond,
+	})
+	c := rhttp.New(
+		rhttp.WithTransport(bp.rt()),
+		rhttp.WithMiddleware(shared.Middleware()),
+	)
+
+	if got := shared.State(); got != rhttp.CircuitClosed {
+		t.Fatalf("expected initial state closed, got %v", got)
+	}
+
+	openCircuit(t, c, 2)
+	if got := shared.State(); got != rhttp.CircuitOpen {
+		t.Fatalf("expected open after %d failures, got %v", 2, got)
+	}
+
+	time.Sleep(60 * time.Millisecond)
+	bp.halfOpen.Store(true)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+		_, _ = c.Do(context.Background(), req)
+	}()
+
+	<-bp.entered
+	if got := shared.State(); got != rhttp.CircuitHalfOpen {
+		t.Fatalf("expected half-open while the probe is in flight, got %v", got)
+	}
+
+	close(bp.release)
+	<-done
+	if got := shared.State(); got != rhttp.CircuitClosed {
+		t.Fatalf("expected closed after a successful probe, got %v", got)
 	}
 }

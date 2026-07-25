@@ -338,3 +338,19 @@ func TestRateLimit_FailFastClosesRequestBody(t *testing.T) {
 		t.Error("request body was not closed on rate-limit short-circuit")
 	}
 }
+
+func TestTokenBucket_TokensReportsAvailability(t *testing.T) {
+	tb := rhttp.NewTokenBucket(1, 5) // 1 token/s: refill drift is negligible
+
+	if got := tb.Tokens(); got != 5 {
+		t.Fatalf("expected a full bucket of 5 tokens, got %v", got)
+	}
+
+	tb.TryAcquire()
+	tb.TryAcquire()
+
+	got := tb.Tokens()
+	if got < 3 || got >= 4 {
+		t.Fatalf("expected ~3 tokens after two acquires, got %v", got)
+	}
+}

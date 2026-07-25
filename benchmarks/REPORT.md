@@ -1,6 +1,6 @@
 # HTTP client comparison report
 
-Generated: 2026-07-25 11:58 CEST
+Generated: 2026-07-25 13:04 CEST
 
 ## Environment
 
@@ -31,23 +31,23 @@ Caveats: net/http does not retry (it is the floor, not a symmetric competitor); 
 
 | Client | ns/op (min) | ns/op (mean) | B/op | allocs/op | vs best |
 |---|---:|---:|---:|---:|---:|
-| rhttp (Timeout+Retry) | 1020 | 1100 | 1980 | 15 | 1.00x |
-| rhttp (Timeout+Retry+CircuitBreaker) | 1102 | 1132 | 1980 | 15 | 1.08x |
-| net/http (Timeout only, no retry) | 1713 | 1747 | 1594 | 26 | 1.68x |
-| go-retryablehttp | 1728 | 1754 | 1594 | 26 | 1.69x |
-| Heimdall (retry) | 2410 | 2493 | 2220 | 32 | 2.36x |
-| Resty (retry) | 5834 | 6000 | 4885 | 48 | 5.72x |
+| rhttp (Timeout+Retry+CircuitBreaker) | 1012 | 1058 | 1468 | 12 | 1.00x |
+| rhttp (Timeout+Retry) | 1019 | 1099 | 1468 | 12 | 1.01x |
+| net/http (Timeout only, no retry) | 1784 | 1854 | 1594 | 26 | 1.76x |
+| go-retryablehttp | 1909 | 1965 | 1595 | 26 | 1.89x |
+| Heimdall (retry) | 2797 | 2969 | 2221 | 32 | 2.76x |
+| Resty (retry) | 6486 | 6787 | 4885 | 48 | 6.41x |
 
 ## Results: end-to-end (loopback, ~1 KB JSON)
 
 | Client | ns/op (min) | ns/op (mean) | B/op | allocs/op | vs best |
 |---|---:|---:|---:|---:|---:|
-| net/http (Timeout only, no retry) | 57001 | 64212 | 6502 | 75 | 1.00x |
-| go-retryablehttp | 58000 | 60629 | 6314 | 74 | 1.02x |
-| Heimdall (retry) | 58871 | 60608 | 6955 | 80 | 1.03x |
-| rhttp (Timeout+Retry+CircuitBreaker) | 61003 | 66404 | 7652 | 79 | 1.07x |
-| rhttp (Timeout+Retry) | 61185 | 64498 | 7576 | 79 | 1.07x |
-| Resty (retry) | 67672 | 74658 | 10721 | 96 | 1.19x |
+| go-retryablehttp | 59892 | 63859 | 6357 | 74 | 1.00x |
+| Heimdall (retry) | 61990 | 67502 | 6999 | 80 | 1.04x |
+| net/http (Timeout only, no retry) | 62209 | 67362 | 6584 | 75 | 1.04x |
+| rhttp (Timeout+Retry) | 63382 | 66040 | 7224 | 76 | 1.06x |
+| rhttp (Timeout+Retry+CircuitBreaker) | 66125 | 67722 | 7185 | 76 | 1.10x |
+| Resty (retry) | 72794 | 78349 | 10916 | 96 | 1.22x |
 
 ## Reproduce
 

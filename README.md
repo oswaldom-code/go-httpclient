@@ -333,27 +333,65 @@ transport := rhttp.DefaultTransport() // HTTP/2 enabled, optimized pool
 
 ## Benchmarks
 
-**Methodology.** These benchmarks run against a no-op transport that returns `200 OK` without touching the network, so they measure **only client and middleware overhead** — not request latency. Run them with `make bench` (`-benchmem -count=5`).
+Two suites, measured 2026-07-25 on linux/amd64 (Intel Core i7-1255U, Go 1.24):
+the in-repo microbenchmarks (`make bench`) measure client and middleware
+overhead against a no-op transport, and a standalone comparison harness
+([`benchmarks/`](benchmarks/), `make report`) measures rhttp against Resty
+v2.17.2, go-retryablehttp v0.7.8 and Heimdall v7.0.3 with equivalent
+configuration (5s timeout, 3 attempts, exponential backoff 100ms-2s).
+
+### Middleware overhead (no network)
+
+Minimum of 5 runs:
 
 ```
-goos: linux
-goarch: amd64
-cpu: Intel Core i7-1255U
-
-BenchmarkMiddlewareOverhead_Baseline-12          235 ns/op    656 B/op    4 allocs/op
-BenchmarkMiddlewareOverhead_WithRetry-12         265 ns/op    656 B/op    4 allocs/op
-BenchmarkMiddlewareOverhead_WithCircuitBreaker-12 271 ns/op   656 B/op    4 allocs/op
-BenchmarkMiddlewareOverhead_AllMiddleware-12    1143 ns/op   1472 B/op   12 allocs/op
-BenchmarkStdHttpClient_Baseline-12               317 ns/op    600 B/op    7 allocs/op
-BenchmarkTokenBucket_TryAcquire-12                52 ns/op      0 B/op    0 allocs/op
-BenchmarkBackoff_Exponential-12                    7 ns/op      0 B/op    0 allocs/op
+BenchmarkMiddlewareOverhead_Baseline-12            240 ns/op    656 B/op    4 allocs/op
+BenchmarkMiddlewareOverhead_WithRetry-12           272 ns/op    656 B/op    4 allocs/op
+BenchmarkMiddlewareOverhead_WithCircuitBreaker-12  266 ns/op    656 B/op    4 allocs/op
+BenchmarkMiddlewareOverhead_AllMiddleware-12      1030 ns/op   1589 B/op   13 allocs/op
+BenchmarkStdHttpClient_Baseline-12                 256 ns/op    552 B/op    5 allocs/op
+BenchmarkTokenBucket_TryAcquire-12                  48 ns/op      0 B/op    0 allocs/op
+BenchmarkBackoffStrategies/Exponential-12            8 ns/op      0 B/op    0 allocs/op
 ```
 
-**Key results:**
 - Full middleware stack: ~1 μs and ~1.5 KB per request — negligible against network latency (0.5–500 ms)
-- Client wrapper overhead is comparable to a bare `http.Client` over the same transport
-- Rate limiter: 52 ns per check, zero allocations
+- Rate limiter: 48 ns per check, zero allocations
 - Backoff strategies: <10 ns, zero allocations
+
+### Comparison with other clients
+
+Wrapper overhead (no-op transport, timeout + 3-attempt retry configured everywhere, min of 5 runs):
+
+| Client | ns/op | allocs/op | vs best |
+|---|---:|---:|---:|
+| rhttp (Timeout+Retry) | 910 | 12 | 1.00x |
+| rhttp (Timeout+Retry+CircuitBreaker) | 946 | 12 | 1.04x |
+| net/http (Timeout only, no retry) | 1750 | 26 | 1.92x |
+| go-retryablehttp | 1775 | 26 | 1.95x |
+| Heimdall (retry) | 2555 | 32 | 2.81x |
+| Resty (retry) | 5818 | 48 | 6.39x |
+
+End-to-end (~1 KB JSON over loopback):
+
+| Client | ns/op | allocs/op | vs best |
+|---|---:|---:|---:|
+| go-retryablehttp | 58309 | 74 | 1.00x |
+| net/http (Timeout only, no retry) | 60995 | 75 | 1.05x |
+| Heimdall (retry) | 61009 | 80 | 1.05x |
+| rhttp (Timeout+Retry) | 61923 | 76 | 1.06x |
+| rhttp (Timeout+Retry+CircuitBreaker) | 62817 | 76 | 1.08x |
+| Resty (retry) | 71696 | 96 | 1.23x |
+
+**Read the caveats before quoting these numbers:**
+
+- All clients are configured equivalently and fully consume and close each response body.
+- `net/http` does not retry: it is the floor, not a symmetric competitor.
+- Heimdall runs without its Hystrix circuit breaker (retry only, for feature symmetry).
+- Resty buffers the full response body by design.
+- Loopback amplifies relative overhead: against a real network (0.5-500 ms per
+  request) every client in the table performs the same for practical purposes.
+
+Full methodology and reproduction steps: [`benchmarks/REPORT.md`](benchmarks/REPORT.md).
 
 ## Design Principles
 

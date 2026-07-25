@@ -73,3 +73,19 @@ func TestClient_MiddlewareChain(t *testing.T) {
 		t.Fatalf("unexpected middleware order: %v", order)
 	}
 }
+
+func TestDo_NilContextDoesNotPanic(t *testing.T) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody, Request: req}, nil
+	})
+	c := rhttp.New(rhttp.WithTransport(rt))
+
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+	resp, err := c.Do(nil, req) //nolint:staticcheck // nil ctx is the case under test
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}

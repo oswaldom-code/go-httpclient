@@ -61,10 +61,12 @@ func (tb *TokenBucket) WaitContext(ctx context.Context) error {
 		waitTime := time.Duration((1.0 / tb.refillRate) * float64(time.Second))
 		tb.mu.Unlock()
 
+		timer := time.NewTimer(waitTime)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return ctx.Err()
-		case <-time.After(waitTime):
+		case <-timer.C:
 		}
 	}
 }
@@ -150,11 +152,13 @@ func (r *rateLimitRoundTripper) RoundTrip(req *http.Request) (*http.Response, er
 			waitTime := time.Until(r.retryAt)
 			r.retryLock.Unlock()
 
+			timer := time.NewTimer(waitTime)
 			select {
 			case <-req.Context().Done():
+				timer.Stop()
 				closeRequestBody(req)
 				return nil, req.Context().Err()
-			case <-time.After(waitTime):
+			case <-timer.C:
 			}
 		} else {
 			r.retryLock.Unlock()

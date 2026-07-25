@@ -35,6 +35,9 @@ func (c *Client) Do(ctx context.Context, req *http.Request) (*http.Response, err
 	if req == nil {
 		return nil, ErrInvalidRequest
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	req = req.Clone(ctx)
 	return c.rt.RoundTrip(req)

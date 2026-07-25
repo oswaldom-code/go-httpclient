@@ -109,10 +109,13 @@ func (r retryRoundTripper) prepareRequest(req *http.Request, attempt int) (*http
 }
 
 func (r retryRoundTripper) waitBackoff(req *http.Request, attempt int, prev *http.Response) error {
+	timer := time.NewTimer(r.cfg.Backoff(attempt-1, prev))
+	defer timer.Stop()
+
 	select {
 	case <-req.Context().Done():
 		return req.Context().Err()
-	case <-time.After(r.cfg.Backoff(attempt-1, prev)):
+	case <-timer.C:
 		return nil
 	}
 }

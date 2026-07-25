@@ -31,7 +31,7 @@ func drain(resp *http.Response) {
 	_ = resp.Body.Close()
 }
 
-func newRhttpFull(rt http.RoundTripper) rhttp.Client {
+func newRhttpFull(rt http.RoundTripper) *rhttp.Client {
 	return rhttp.New(
 		rhttp.WithTransport(rt),
 		rhttp.WithMiddleware(
@@ -48,7 +48,7 @@ func newRhttpFull(rt http.RoundTripper) rhttp.Client {
 	)
 }
 
-func newRhttpRetryOnly(rt http.RoundTripper) rhttp.Client {
+func newRhttpRetryOnly(rt http.RoundTripper) *rhttp.Client {
 	return rhttp.New(
 		rhttp.WithTransport(rt),
 		rhttp.WithMiddleware(
@@ -87,7 +87,7 @@ func newHeimdall(rt http.RoundTripper) *httpclient.Client {
 	)
 }
 
-func benchRhttp(b *testing.B, c rhttp.Client, url string) {
+func benchRhttp(b *testing.B, c *rhttp.Client, url string) {
 	req, _ := http.NewRequest(http.MethodGet, url, http.NoBody)
 	ctx := context.Background()
 	b.ResetTimer()

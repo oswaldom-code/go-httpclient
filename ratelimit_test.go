@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -311,4 +312,29 @@ func BenchmarkTokenBucket_Concurrent(b *testing.B) {
 			tb.TryAcquire()
 		}
 	})
+}
+
+func TestRateLimit_FailFastClosesRequestBody(t *testing.T) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody, Request: req}, nil
+	})
+	limiter := rhttp.NewTokenBucket(1, 1)
+	limiter.TryAcquire()
+
+	c := rhttp.New(
+		rhttp.WithTransport(rt),
+		rhttp.WithMiddleware(rhttp.RateLimit(rhttp.RateLimitConfig{Limiter: limiter})),
+	)
+
+	rec := &closeRecorder{Reader: strings.NewReader("payload")}
+	req, _ := http.NewRequest(http.MethodPut, "http://example.com", http.NoBody)
+	req.Body = rec
+	_, err := c.Do(context.Background(), req)
+
+	if !errors.Is(err, rhttp.ErrRateLimited) {
+		t.Fatalf("expected ErrRateLimited, got %v", err)
+	}
+	if !rec.closed {
+		t.Error("request body was not closed on rate-limit short-circuit")
+	}
 }

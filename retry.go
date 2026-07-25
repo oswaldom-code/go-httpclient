@@ -61,12 +61,14 @@ func (r retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 	for attempt := 0; attempt < r.cfg.MaxAttempts; attempt++ {
 		if attempt > 0 {
 			if err := r.waitBackoff(req, attempt, resp); err != nil {
+				closeRequestBody(req)
 				return nil, err
 			}
 		}
 
 		attemptReq, prepErr := r.prepareRequest(req, attempt)
 		if prepErr != nil {
+			closeRequestBody(req)
 			return nil, prepErr
 		}
 

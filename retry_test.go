@@ -504,3 +504,35 @@ func TestRetry_BackoffReceivesPreviousResponse(t *testing.T) {
 		t.Errorf("expected the retry to honor Retry-After (~1s), waited only %v", elapsed)
 	}
 }
+
+func TestRetry_BackoffCanceledClosesRequestBody(t *testing.T) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusServiceUnavailable, Body: http.NoBody, Request: req}, nil
+	})
+
+	c := rhttp.New(
+		rhttp.WithTransport(rt),
+		rhttp.WithMiddleware(rhttp.Retry(rhttp.RetryConfig{
+			MaxAttempts: 3,
+			Backoff:     rhttp.ConstantBackoff(200 * time.Millisecond),
+		})),
+	)
+
+	rec := &closeRecorder{Reader: strings.NewReader("payload")}
+	req, _ := http.NewRequest(http.MethodPut, "http://example.com", http.NoBody)
+	req.Body = rec
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(strings.NewReader("payload")), nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err := c.Do(ctx, req)
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected DeadlineExceeded during backoff, got %v", err)
+	}
+	if !rec.closed {
+		t.Error("request body was not closed when backoff was canceled")
+	}
+}

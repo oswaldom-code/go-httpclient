@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -803,5 +804,33 @@ func TestCircuitState_String(t *testing.T) {
 		if got := state.String(); got != want {
 			t.Errorf("state %d: expected %q, got %q", int(state), want, got)
 		}
+	}
+}
+
+func TestCircuitBreaker_OpenClosesRequestBody(t *testing.T) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, errors.New("connection refused")
+	})
+	c := rhttp.New(
+		rhttp.WithTransport(rt),
+		rhttp.WithMiddleware(rhttp.CircuitBreaker(rhttp.CircuitBreakerConfig{
+			FailureThreshold: 1,
+			ResetTimeout:     time.Hour,
+		})),
+	)
+
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+	_, _ = c.Do(context.Background(), req)
+
+	rec := &closeRecorder{Reader: strings.NewReader("payload")}
+	req, _ = http.NewRequest(http.MethodPut, "http://example.com", http.NoBody)
+	req.Body = rec
+	_, err := c.Do(context.Background(), req)
+
+	if !errors.Is(err, rhttp.ErrCircuitOpen) {
+		t.Fatalf("expected ErrCircuitOpen, got %v", err)
+	}
+	if !rec.closed {
+		t.Error("request body was not closed on circuit-open short-circuit")
 	}
 }

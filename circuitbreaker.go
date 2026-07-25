@@ -216,6 +216,7 @@ type circuitBreakerRoundTripper struct {
 func (rt circuitBreakerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	allowed, gen := rt.cb.allowRequest()
 	if !allowed {
+		closeRequestBody(req)
 		return nil, ErrCircuitOpen
 	}
 

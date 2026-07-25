@@ -152,6 +152,7 @@ func (r *rateLimitRoundTripper) RoundTrip(req *http.Request) (*http.Response, er
 
 			select {
 			case <-req.Context().Done():
+				closeRequestBody(req)
 				return nil, req.Context().Err()
 			case <-time.After(waitTime):
 			}
@@ -163,9 +164,11 @@ func (r *rateLimitRoundTripper) RoundTrip(req *http.Request) (*http.Response, er
 	// Acquire rate limit token
 	if r.cfg.WaitOnLimit {
 		if err := r.cfg.Limiter.WaitContext(req.Context()); err != nil {
+			closeRequestBody(req)
 			return nil, err
 		}
 	} else if !r.cfg.Limiter.TryAcquire() {
+		closeRequestBody(req)
 		return nil, ErrRateLimited
 	}
 

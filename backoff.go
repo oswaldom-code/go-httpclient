@@ -1,6 +1,7 @@
 package rhttp
 
 import (
+	"math"
 	"math/rand"
 	"net/http"
 	"strconv"
@@ -34,10 +35,19 @@ func LinearBackoff(base, maxDuration time.Duration) BackoffFunc {
 	}
 }
 
+// overflowsExp reports whether base * 2^attempt overflows int64.
+func overflowsExp(base time.Duration, attempt int) bool {
+	return attempt >= 63 || base > math.MaxInt64>>attempt
+}
+
 // ExponentialBackoff returns a backoff function with exponential growth and jitter.
 // The wait time is: base * 2^attempt with ±20% jitter, capped at maxDuration.
+// Attempts whose product no longer fits in int64 saturate at maxDuration.
 func ExponentialBackoff(base, maxDuration time.Duration) BackoffFunc {
 	return func(attempt int, _ *http.Response) time.Duration {
+		if overflowsExp(base, attempt) {
+			return maxDuration
+		}
 		backoff := base * (1 << attempt)
 		backoff = min(backoff, maxDuration)
 		// Add jitter: ±20% (not crypto, just randomization for backoff distribution)
@@ -106,6 +116,9 @@ func DecorrelatedJitterBackoff(base, maxDuration time.Duration) BackoffFunc {
 // This provides the best spread for avoiding thundering herd.
 func ExponentialBackoffFullJitter(base, maxDuration time.Duration) BackoffFunc {
 	return func(attempt int, _ *http.Response) time.Duration {
+		if overflowsExp(base, attempt) {
+			return maxDuration
+		}
 		ceiling := base * (1 << attempt)
 		ceiling = min(ceiling, maxDuration)
 		return time.Duration(rand.Float64() * float64(ceiling)) //nolint:gosec
@@ -116,6 +129,9 @@ func ExponentialBackoffFullJitter(base, maxDuration time.Duration) BackoffFunc {
 // The wait time is: (base * 2^attempt)/2 + random(0, (base * 2^attempt)/2)
 func ExponentialBackoffEqualJitter(base, maxDuration time.Duration) BackoffFunc {
 	return func(attempt int, _ *http.Response) time.Duration {
+		if overflowsExp(base, attempt) {
+			return maxDuration
+		}
 		ceiling := base * (1 << attempt)
 		ceiling = min(ceiling, maxDuration)
 		half := ceiling / 2

@@ -289,3 +289,23 @@ func TestWithRetryAfter_InvalidHeaderUsesBase(t *testing.T) {
 		}
 	}
 }
+
+func TestExponentialVariants_OverflowReturnsMax(t *testing.T) {
+	const base = 100 * time.Millisecond
+	const maxDur = 10 * time.Second
+
+	variants := map[string]rhttp.BackoffFunc{
+		"Exponential": rhttp.ExponentialBackoff(base, maxDur),
+		"FullJitter":  rhttp.ExponentialBackoffFullJitter(base, maxDur),
+		"EqualJitter": rhttp.ExponentialBackoffEqualJitter(base, maxDur),
+	}
+
+	for name, backoff := range variants {
+		for _, attempt := range []int{37, 63, 64, 100} {
+			d := backoff(attempt, nil)
+			if d != maxDur {
+				t.Errorf("%s attempt %d: expected exactly maxDuration %v, got %v", name, attempt, maxDur, d)
+			}
+		}
+	}
+}

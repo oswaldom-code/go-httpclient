@@ -75,38 +75,44 @@ type circuitBreaker struct {
 
 	mu               sync.Mutex
 	state            CircuitState
+	generation       uint64
 	failures         int
 	lastFailureTime  time.Time
 	halfOpenInFlight int
 	halfOpenSuccess  int
 }
 
-func (cb *circuitBreaker) allowRequest() bool {
+// allowRequest reports whether the request is admitted and returns the
+// generation under which it was admitted. Every state transition bumps the
+// generation, so recordResult can discard results from requests that outlived
+// the state in which they were admitted.
+func (cb *circuitBreaker) allowRequest() (admitted bool, gen uint64) {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 
 	switch cb.state {
 	case CircuitClosed:
-		return true
+		return true, cb.generation
 
 	case CircuitOpen:
 		if time.Since(cb.lastFailureTime) >= cb.cfg.ResetTimeout {
 			cb.state = CircuitHalfOpen
+			cb.generation++
 			cb.halfOpenSuccess = 0
 			cb.halfOpenInFlight = 1
-			return true
+			return true, cb.generation
 		}
-		return false
+		return false, cb.generation
 
 	case CircuitHalfOpen:
 		if cb.halfOpenInFlight < cb.cfg.MaxHalfOpenRequests {
 			cb.halfOpenInFlight++
-			return true
+			return true, cb.generation
 		}
-		return false
+		return false, cb.generation
 
 	default:
-		return true
+		return true, cb.generation
 	}
 }
 
@@ -120,6 +126,7 @@ func (cb *circuitBreaker) recordClosedResult(isFailure bool) {
 	cb.lastFailureTime = time.Now()
 	if cb.failures >= cb.cfg.FailureThreshold {
 		cb.state = CircuitOpen
+		cb.generation++
 	}
 }
 
@@ -130,9 +137,11 @@ func (cb *circuitBreaker) recordHalfOpenResult(isFailure bool) {
 
 	if isFailure {
 		cb.state = CircuitOpen
+		cb.generation++
 		cb.lastFailureTime = time.Now()
 		cb.failures = cb.cfg.FailureThreshold
 		cb.halfOpenSuccess = 0
+		cb.halfOpenInFlight = 0
 		return
 	}
 
@@ -142,16 +151,24 @@ func (cb *circuitBreaker) recordHalfOpenResult(isFailure bool) {
 	}
 
 	cb.state = CircuitClosed
+	cb.generation++
 	cb.failures = 0
 	cb.halfOpenSuccess = 0
 	cb.halfOpenInFlight = 0
 }
 
-func (cb *circuitBreaker) recordResult(resp *http.Response, err error) {
+func (cb *circuitBreaker) recordResult(resp *http.Response, err error, gen uint64) {
 	isFailure := cb.cfg.IsFailure(resp, err)
 
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
+
+	// Discard results from a bygone episode: the state under which the request
+	// was admitted no longer exists, so counting it would corrupt the current
+	// one (e.g. a slow Closed request closing a Half-Open circuit).
+	if gen != cb.generation {
+		return
+	}
 
 	switch cb.state {
 	case CircuitClosed:
@@ -161,8 +178,11 @@ func (cb *circuitBreaker) recordResult(resp *http.Response, err error) {
 		cb.recordHalfOpenResult(isFailure)
 
 	case CircuitOpen:
-		// Unreachable: allowRequest rejects requests while Open, so a result
-		// is never recorded in this state. Handled to keep the switch exhaustive.
+		// Unreachable: a request is only admitted while Closed or on the
+		// transition into Half-Open, and every transition bumps the generation.
+		// A result observed while the breaker sits in Open therefore carries a
+		// stale generation and was already discarded above. Kept for switch
+		// exhaustiveness.
 	}
 }
 
@@ -180,13 +200,14 @@ type circuitBreakerRoundTripper struct {
 }
 
 func (rt circuitBreakerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if !rt.cb.allowRequest() {
+	allowed, gen := rt.cb.allowRequest()
+	if !allowed {
 		return nil, ErrCircuitOpen
 	}
 
 	resp, err := rt.next.RoundTrip(req)
 
-	rt.cb.recordResult(resp, err)
+	rt.cb.recordResult(resp, err, gen)
 
 	return resp, err
 }

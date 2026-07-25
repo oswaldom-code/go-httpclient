@@ -709,3 +709,86 @@ func TestCircuitBreaker_IsFailureMayCallState(t *testing.T) {
 		t.Fatal("IsFailure calling State() deadlocked recordResult")
 	}
 }
+
+// Regression (C2): a slow request admitted while Closed must not have its late
+// result counted against a later Half-Open episode. Without generation gating,
+// its success runs recordHalfOpenResult, closing the circuit and freeing the
+// real probe's budget.
+func TestCircuitBreaker_StaleResultDoesNotCloseHalfOpen(t *testing.T) {
+	enteredA := make(chan struct{})
+	relA := make(chan struct{})
+	enteredC := make(chan struct{})
+	relC := make(chan struct{})
+
+	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.Header.Get("X-Role") {
+		case "fail":
+			return nil, errors.New("connection refused")
+		case "slow-closed":
+			close(enteredA)
+			<-relA
+			return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
+		case "probe":
+			close(enteredC)
+			<-relC
+			return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
+		default:
+			return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
+		}
+	})
+
+	scb := rhttp.NewCircuitBreaker(rhttp.CircuitBreakerConfig{
+		FailureThreshold: 1,
+		ResetTimeout:     10 * time.Millisecond,
+	})
+	c := rhttp.New(
+		rhttp.WithTransport(rt),
+		rhttp.WithMiddleware(scb.Middleware()),
+	)
+
+	do := func(role string) {
+		req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+		req.Header.Set("X-Role", role)
+		_, _ = c.Do(context.Background(), req)
+	}
+
+	var wg sync.WaitGroup
+
+	// 1. Admit a slow request while Closed; hold it in flight.
+	doneA := make(chan struct{})
+	wg.Add(1)
+	go func() { defer wg.Done(); do("slow-closed"); close(doneA) }()
+	<-enteredA
+
+	// 2. A failure opens the circuit (threshold 1).
+	do("fail")
+	if got := scb.State(); got != rhttp.CircuitOpen {
+		t.Fatalf("expected Open after failure, got %v", got)
+	}
+
+	// 3. After the reset timeout, admit a probe; hold it in flight (Half-Open).
+	time.Sleep(15 * time.Millisecond)
+	wg.Add(1)
+	go func() { defer wg.Done(); do("probe") }()
+	<-enteredC
+	if got := scb.State(); got != rhttp.CircuitHalfOpen {
+		t.Fatalf("expected Half-Open with a probe in flight, got %v", got)
+	}
+
+	// 4. The stale Closed-era request completes successfully and is recorded.
+	close(relA)
+	<-doneA
+
+	// 5. The circuit must stay Half-Open and the probe budget must remain taken.
+	if got := scb.State(); got != rhttp.CircuitHalfOpen {
+		t.Fatalf("stale Closed result closed the circuit: state=%v", got)
+	}
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+	req.Header.Set("X-Role", "check")
+	if _, err := c.Do(context.Background(), req); !errors.Is(err, rhttp.ErrCircuitOpen) {
+		t.Fatalf("stale result freed the half-open budget: got %v", err)
+	}
+
+	close(relC)
+	wg.Wait()
+}

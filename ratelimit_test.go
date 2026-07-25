@@ -84,14 +84,14 @@ func TestTokenBucket_Refill(t *testing.T) {
 	}
 }
 
-func TestTokenBucket_Wait(t *testing.T) {
+func TestTokenBucket_WaitContextBlocksUntilToken(t *testing.T) {
 	tb := rhttp.NewTokenBucket(100, 1) // 100 req/s, burst of 1
 
 	// Consume the token
 	tb.TryAcquire()
 
 	start := time.Now()
-	err := tb.Wait()
+	err := tb.WaitContext(context.Background())
 	elapsed := time.Since(start)
 
 	if err != nil {
@@ -102,6 +102,38 @@ func TestTokenBucket_Wait(t *testing.T) {
 	if elapsed < 5*time.Millisecond {
 		t.Errorf("expected to wait at least 5ms, waited %v", elapsed)
 	}
+}
+
+// stubLimiter mirrors the method set of x/time/rate.Limiter without importing it.
+type stubLimiter struct{}
+
+func (stubLimiter) Allow() bool                  { return true }
+func (stubLimiter) Wait(_ context.Context) error { return nil }
+
+// xRateAdapter shows that adapting an x/time/rate style limiter to
+// rhttp.RateLimiter takes a struct and two one-line methods.
+type xRateAdapter struct{ l stubLimiter }
+
+func (a xRateAdapter) TryAcquire() bool                      { return a.l.Allow() }
+func (a xRateAdapter) WaitContext(ctx context.Context) error { return a.l.Wait(ctx) }
+
+func TestRateLimiter_XTimeRateAdapter(t *testing.T) {
+	var limiter rhttp.RateLimiter = xRateAdapter{}
+
+	rt := internal.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})
+	c := rhttp.New(
+		rhttp.WithTransport(rt),
+		rhttp.WithMiddleware(rhttp.RateLimit(rhttp.RateLimitConfig{Limiter: limiter})),
+	)
+
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+	resp, err := c.Do(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resp.Body.Close()
 }
 
 func TestTokenBucket_Concurrent(t *testing.T) {

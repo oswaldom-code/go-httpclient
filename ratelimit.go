@@ -10,10 +10,6 @@ import (
 
 // RateLimiter controls the rate of HTTP requests.
 type RateLimiter interface {
-	// Wait blocks until a token is available.
-	// Deprecated: Use WaitContext for proper cancellation support.
-	Wait() error
-
 	// WaitContext blocks until a token is available or context is canceled.
 	// Returns an error if the context is canceled.
 	WaitContext(ctx context.Context) error
@@ -51,12 +47,6 @@ func NewTokenBucket(rate float64, burst int) *TokenBucket {
 		refillRate: rate,
 		lastRefill: time.Now(),
 	}
-}
-
-// Wait blocks until a token is available.
-// Deprecated: Use WaitContext for proper cancellation support.
-func (tb *TokenBucket) Wait() error {
-	return tb.WaitContext(context.Background())
 }
 
 // WaitContext blocks until a token is available or context is canceled.

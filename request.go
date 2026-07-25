@@ -337,13 +337,22 @@ func (rb *RequestBuilder) execute() (*http.Response, error) {
 
 	// Apply timeout
 	ctx := rb.ctx
-	if rb.timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, rb.timeout)
-		defer cancel()
+	if rb.timeout <= 0 {
+		return rb.client.Do(ctx, req)
 	}
 
-	return rb.client.Do(ctx, req)
+	ctx, cancel := context.WithTimeout(ctx, rb.timeout)
+	resp, err := rb.client.Do(ctx, req)
+	if err != nil {
+		cancel()
+		return resp, err
+	}
+	if resp.Body == nil {
+		cancel()
+		return resp, nil
+	}
+	resp.Body = &cancelBody{ReadCloser: resp.Body, cancel: cancel}
+	return resp, nil
 }
 
 // basicAuth encodes username and password for Basic authentication.

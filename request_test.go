@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -285,6 +286,40 @@ func TestRequestBuilder_Timeout(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "context deadline exceeded") {
 		t.Errorf("expected deadline exceeded error, got %v", err)
+	}
+}
+
+func TestRequestBuilder_SetTimeoutBodyReadableAfterReturn(t *testing.T) {
+	const head, tail = "first-chunk-", "second-chunk"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fl, ok := w.(http.Flusher)
+		if !ok {
+			t.Error("ResponseWriter is not a Flusher")
+			return
+		}
+		_, _ = io.WriteString(w, head)
+		fl.Flush()
+		time.Sleep(50 * time.Millisecond)
+		_, _ = io.WriteString(w, tail)
+	}))
+	defer srv.Close()
+
+	c := rhttp.New()
+
+	resp, err := rhttp.R(c).
+		SetTimeout(5 * time.Second).
+		Get(srv.URL)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading body after builder execute returned: %v", err)
+	}
+	if string(body) != head+tail {
+		t.Fatalf("expected body %q, got %q", head+tail, body)
 	}
 }
 

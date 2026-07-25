@@ -529,3 +529,118 @@ func TestRequestBuilder_LargeBodyStreamsWithoutRetry(t *testing.T) {
 		t.Errorf("expected a single attempt for a non-replayable streamed body, got %d", got)
 	}
 }
+
+func TestRequestBuilder_MalformedURL(t *testing.T) {
+	var calls int32
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		atomic.AddInt32(&calls, 1)
+		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
+	})
+	c := rhttp.New(rhttp.WithTransport(rt))
+
+	_, err := c.R().Get("http://exa mple.com/api")
+	if err == nil {
+		t.Fatal("expected error for malformed URL")
+	}
+	if calls != 0 {
+		t.Errorf("expected the transport to never run, got %d calls", calls)
+	}
+}
+
+func TestRequestBuilder_SetBodyJSONMarshalError(t *testing.T) {
+	var calls int32
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		atomic.AddInt32(&calls, 1)
+		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
+	})
+	c := rhttp.New(rhttp.WithTransport(rt))
+
+	_, err := c.R().
+		SetBodyJSON(make(chan int)).
+		Post("http://example.com")
+	if err == nil {
+		t.Fatal("expected marshal error for unsupported JSON type")
+	}
+	if calls != 0 {
+		t.Errorf("expected the transport to never run, got %d calls", calls)
+	}
+}
+
+func TestRequestBuilder_SetBodyXML(t *testing.T) {
+	var capturedReq *http.Request
+	var capturedBody string
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		capturedReq = req
+		body, _ := io.ReadAll(req.Body)
+		capturedBody = string(body)
+		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
+	})
+	c := rhttp.New(rhttp.WithTransport(rt))
+
+	type User struct {
+		Name string `xml:"name"`
+	}
+	_, err := c.R().
+		SetBodyXML(User{Name: "John"}).
+		Post("http://example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := capturedReq.Header.Get("Content-Type"); got != "application/xml" {
+		t.Errorf("expected Content-Type=application/xml, got %s", got)
+	}
+	if !strings.Contains(capturedBody, "<name>John</name>") {
+		t.Errorf("unexpected XML body: %s", capturedBody)
+	}
+}
+
+func TestRequestBuilder_SetBodyXMLMarshalError(t *testing.T) {
+	c := rhttp.New(rhttp.WithTransport(rhttp.RoundTripperFunc(
+		func(req *http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
+		})))
+
+	_, err := c.R().
+		SetBodyXML(map[string]string{"k": "v"}).
+		Post("http://example.com")
+	if err == nil {
+		t.Fatal("expected marshal error: xml does not support maps")
+	}
+}
+
+func TestRequestBuilder_ExecuteCustomMethod(t *testing.T) {
+	var capturedReq *http.Request
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		capturedReq = req
+		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
+	})
+	c := rhttp.New(rhttp.WithTransport(rt))
+
+	_, err := c.R().Execute("TRACE", "http://example.com/api")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedReq.Method != "TRACE" {
+		t.Errorf("expected method TRACE, got %s", capturedReq.Method)
+	}
+}
+
+func TestRequestBuilder_PathParamIsEscaped(t *testing.T) {
+	var capturedReq *http.Request
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		capturedReq = req
+		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
+	})
+	c := rhttp.New(rhttp.WithTransport(rt))
+
+	_, err := c.R().
+		SetPathParam("id", "a/b c").
+		Get("http://example.com/items/{id}")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "http://example.com/items/a%2Fb%20c"
+	if got := capturedReq.URL.String(); got != want {
+		t.Errorf("expected escaped path param URL %s, got %s", want, got)
+	}
+}

@@ -354,3 +354,136 @@ func TestTokenBucket_TokensReportsAvailability(t *testing.T) {
 		t.Fatalf("expected ~3 tokens after two acquires, got %v", got)
 	}
 }
+
+func TestTokenBucket_WaitContextAlreadyCanceled(t *testing.T) {
+	tb := rhttp.NewTokenBucket(1, 1)
+	tb.TryAcquire()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	start := time.Now()
+	err := tb.WaitContext(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
+		t.Errorf("expected immediate return on canceled ctx, took %v", elapsed)
+	}
+}
+
+func TestRateLimit_RetryAfterHTTPDate(t *testing.T) {
+	var calls int32
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			resp := &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header:     make(http.Header),
+				Request:    req,
+			}
+			resp.Header.Set("Retry-After", time.Now().Add(2*time.Second).UTC().Format(http.TimeFormat))
+			return resp, nil
+		}
+		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
+	})
+
+	limiter := rhttp.NewTokenBucket(1000, 100)
+	c := rhttp.New(
+		rhttp.WithTransport(rt),
+		rhttp.WithMiddleware(rhttp.RateLimit(rhttp.RateLimitConfig{
+			Limiter:           limiter,
+			RespectRetryAfter: true,
+		})),
+	)
+
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+	_, _ = c.Do(context.Background(), req)
+
+	start := time.Now()
+	req, _ = http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+	resp, err := c.Do(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if elapsed := time.Since(start); elapsed < 900*time.Millisecond {
+		t.Errorf("expected to honor the HTTP-date Retry-After (~1-2s), waited %v", elapsed)
+	}
+}
+
+func TestRateLimit_CtxCanceledDuringRetryAfterWait(t *testing.T) {
+	var calls int32
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		atomic.AddInt32(&calls, 1)
+		resp := &http.Response{
+			StatusCode: http.StatusTooManyRequests,
+			Header:     make(http.Header),
+			Request:    req,
+		}
+		resp.Header.Set("Retry-After", "2")
+		return resp, nil
+	})
+
+	limiter := rhttp.NewTokenBucket(1000, 100)
+	c := rhttp.New(
+		rhttp.WithTransport(rt),
+		rhttp.WithMiddleware(rhttp.RateLimit(rhttp.RateLimitConfig{
+			Limiter:           limiter,
+			RespectRetryAfter: true,
+		})),
+	)
+
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+	_, _ = c.Do(context.Background(), req)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	req, _ = http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+	_, err := c.Do(ctx, req)
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected DeadlineExceeded during Retry-After wait, got %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 1*time.Second {
+		t.Errorf("expected the canceled ctx to cut the 2s wait, took %v", elapsed)
+	}
+}
+
+func TestRateLimit_RespectRetryAfterConcurrent(t *testing.T) {
+	var calls int32
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		if atomic.AddInt32(&calls, 1)%3 == 0 {
+			resp := &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header:     make(http.Header),
+				Request:    req,
+			}
+			resp.Header.Set("Retry-After", "0")
+			return resp, nil
+		}
+		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
+	})
+
+	limiter := rhttp.NewTokenBucket(100000, 1000)
+	c := rhttp.New(
+		rhttp.WithTransport(rt),
+		rhttp.WithMiddleware(rhttp.RateLimit(rhttp.RateLimitConfig{
+			Limiter:           limiter,
+			RespectRetryAfter: true,
+		})),
+	)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+			_, _ = c.Do(context.Background(), req)
+		}()
+	}
+	wg.Wait()
+}

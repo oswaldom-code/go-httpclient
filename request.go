@@ -34,13 +34,12 @@ type RequestBuilder struct {
 }
 
 // R creates a new RequestBuilder bound to the client.
+// Query and path parameter maps are initialized lazily on first use.
 func (c *Client) R() *RequestBuilder {
 	return &RequestBuilder{
-		client:      c,
-		ctx:         context.Background(),
-		headers:     make(http.Header),
-		queryParams: make(url.Values),
-		pathParams:  make(map[string]string),
+		client:  c,
+		ctx:     context.Background(),
+		headers: make(http.Header),
 	}
 }
 
@@ -102,14 +101,22 @@ func (rb *RequestBuilder) SetBasicAuth(username, password string) *RequestBuilde
 	return rb
 }
 
+func (rb *RequestBuilder) ensureQueryParams() {
+	if rb.queryParams == nil {
+		rb.queryParams = make(url.Values)
+	}
+}
+
 // SetQueryParam sets a single query parameter.
 func (rb *RequestBuilder) SetQueryParam(key, value string) *RequestBuilder {
+	rb.ensureQueryParams()
 	rb.queryParams.Set(key, value)
 	return rb
 }
 
 // SetQueryParams sets multiple query parameters from a map.
 func (rb *RequestBuilder) SetQueryParams(params map[string]string) *RequestBuilder {
+	rb.ensureQueryParams()
 	for k, v := range params {
 		rb.queryParams.Set(k, v)
 	}
@@ -118,19 +125,28 @@ func (rb *RequestBuilder) SetQueryParams(params map[string]string) *RequestBuild
 
 // AddQueryParam adds a query parameter (allows multiple values for same key).
 func (rb *RequestBuilder) AddQueryParam(key, value string) *RequestBuilder {
+	rb.ensureQueryParams()
 	rb.queryParams.Add(key, value)
 	return rb
+}
+
+func (rb *RequestBuilder) ensurePathParams() {
+	if rb.pathParams == nil {
+		rb.pathParams = make(map[string]string)
+	}
 }
 
 // SetPathParam sets a path parameter to be replaced in the URL.
 // Example: SetPathParam("id", "123") replaces {id} in "/users/{id}".
 func (rb *RequestBuilder) SetPathParam(key, value string) *RequestBuilder {
+	rb.ensurePathParams()
 	rb.pathParams[key] = value
 	return rb
 }
 
 // SetPathParams sets multiple path parameters from a map.
 func (rb *RequestBuilder) SetPathParams(params map[string]string) *RequestBuilder {
+	rb.ensurePathParams()
 	for k, v := range params {
 		rb.pathParams[k] = v
 	}

@@ -85,7 +85,10 @@ func fibonacci(n int) int {
 // DecorrelatedJitterBackoff returns a backoff with decorrelated jitter.
 // This algorithm provides better distribution than exponential backoff with jitter.
 // See: https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
-// Note: This function returns a stateful BackoffFunc that is safe for concurrent use.
+//
+// The returned BackoffFunc carries shared state guarded by a mutex: it is
+// race-free, but concurrent retry sequences feed the same last-backoff value
+// and correlate their delays. Use one instance per sequence when that matters.
 func DecorrelatedJitterBackoff(base, maxDuration time.Duration) BackoffFunc {
 	var (
 		mu          sync.Mutex

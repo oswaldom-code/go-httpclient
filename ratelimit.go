@@ -26,6 +26,7 @@ type TokenBucket struct {
 	maxTokens  float64
 	refillRate float64 // tokens per second
 	lastRefill time.Time
+	waitTime   time.Duration // time for one token to refill; immutable
 	unlimited  bool
 }
 
@@ -46,6 +47,7 @@ func NewTokenBucket(rate float64, burst int) *TokenBucket {
 		maxTokens:  float64(burst),
 		refillRate: rate,
 		lastRefill: time.Now(),
+		waitTime:   time.Duration(float64(time.Second) / rate),
 	}
 }
 
@@ -56,12 +58,7 @@ func (tb *TokenBucket) WaitContext(ctx context.Context) error {
 			return nil
 		}
 
-		// Calculate wait time for next token
-		tb.mu.Lock()
-		waitTime := time.Duration((1.0 / tb.refillRate) * float64(time.Second))
-		tb.mu.Unlock()
-
-		timer := time.NewTimer(waitTime)
+		timer := time.NewTimer(tb.waitTime)
 		select {
 		case <-ctx.Done():
 			timer.Stop()

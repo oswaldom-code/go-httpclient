@@ -195,9 +195,6 @@ client := rhttp.New(
         }),
     ),
 )
-
-// Per-host rate limiting
-perHostLimiter := rhttp.NewPerHostRateLimiter(50, 5) // 50 req/s per host
 ```
 
 ### Logging

@@ -289,37 +289,6 @@ func TestRateLimit_NilLimiter(t *testing.T) {
 	}
 }
 
-func TestPerHostRateLimiter(t *testing.T) {
-	phl := rhttp.NewPerHostRateLimiter(10, 5)
-
-	limiter1 := phl.GetLimiter("api.example.com")
-	limiter2 := phl.GetLimiter("api.other.com")
-	limiter3 := phl.GetLimiter("api.example.com") // same as limiter1
-
-	if limiter1 == limiter2 {
-		t.Error("expected different limiters for different hosts")
-	}
-
-	if limiter1 != limiter3 {
-		t.Error("expected same limiter for same host")
-	}
-
-	// Drain limiter1
-	for i := 0; i < 5; i++ {
-		limiter1.TryAcquire()
-	}
-
-	// limiter2 should still have tokens
-	if !limiter2.TryAcquire() {
-		t.Error("expected limiter2 to have tokens")
-	}
-
-	// limiter1 should be empty
-	if limiter1.TryAcquire() {
-		t.Error("expected limiter1 to be empty")
-	}
-}
-
 func BenchmarkTokenBucket_TryAcquire(b *testing.B) {
 	tb := rhttp.NewTokenBucket(1000000, 1000000) // high limits
 

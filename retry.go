@@ -12,8 +12,9 @@ type RetryConfig struct {
 	MaxAttempts int
 
 	// Backoff returns the duration to wait before the nth retry (0-indexed).
-	// If nil, exponential backoff is used.
-	Backoff func(attempt int) time.Duration
+	// It receives the response of the attempt that triggered the retry (nil if
+	// it produced no response). If nil, exponential backoff is used.
+	Backoff BackoffFunc
 
 	// IsRetryable determines if a request should be retried based on the response and error.
 	// If nil, default retry logic is used.
@@ -59,7 +60,7 @@ func (r retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 
 	for attempt := 0; attempt < r.cfg.MaxAttempts; attempt++ {
 		if attempt > 0 {
-			if err := r.waitBackoff(req, attempt); err != nil {
+			if err := r.waitBackoff(req, attempt, resp); err != nil {
 				return nil, err
 			}
 		}
@@ -105,11 +106,11 @@ func (r retryRoundTripper) prepareRequest(req *http.Request, attempt int) (*http
 	return attemptReq, nil
 }
 
-func (r retryRoundTripper) waitBackoff(req *http.Request, attempt int) error {
+func (r retryRoundTripper) waitBackoff(req *http.Request, attempt int, prev *http.Response) error {
 	select {
 	case <-req.Context().Done():
 		return req.Context().Err()
-	case <-time.After(r.cfg.Backoff(attempt - 1)):
+	case <-time.After(r.cfg.Backoff(attempt-1, prev)):
 		return nil
 	}
 }

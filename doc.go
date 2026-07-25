@@ -58,6 +58,9 @@
 //   - [ExponentialBackoffFullJitter]: Full jitter for thundering herd prevention
 //   - [ExponentialBackoffEqualJitter]: Equal jitter variant
 //
+// Strategies compose with [WithJitter], [WithMin], [WithMax], and
+// [WithRetryAfter], which honors the Retry-After header on 429/503 responses.
+//
 // # Error Classification
 //
 // Errors are automatically classified using [Classify] to help with retry decisions:

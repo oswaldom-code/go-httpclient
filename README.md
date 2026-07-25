@@ -160,7 +160,8 @@ client := rhttp.New(
 | `ExponentialBackoffEqualJitter(base, max)` | `base * 2^attempt / 2 + random(0, half)` |
 | `DecorrelatedJitterBackoff(base, max)` | AWS-style decorrelated jitter |
 
-Composable with `WithJitter()`, `WithMin()`, `WithMax()`.
+Composable with `WithJitter()`, `WithMin()`, `WithMax()`, and `WithRetryAfter()`
+(honors the `Retry-After` header on 429/503 responses).
 
 ### Circuit Breaker
 

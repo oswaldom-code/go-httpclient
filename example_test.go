@@ -131,9 +131,9 @@ func ExampleExponentialBackoff() {
 	backoff := rhttp.ExponentialBackoff(100*time.Millisecond, 10*time.Second)
 
 	// Backoff durations increase exponentially with jitter
-	fmt.Println("Attempt 0:", backoff(0)) // ~100ms
-	fmt.Println("Attempt 1:", backoff(1)) // ~200ms
-	fmt.Println("Attempt 2:", backoff(2)) // ~400ms
+	fmt.Println("Attempt 0:", backoff(0, nil)) // ~100ms
+	fmt.Println("Attempt 1:", backoff(1, nil)) // ~200ms
+	fmt.Println("Attempt 2:", backoff(2, nil)) // ~400ms
 }
 
 func ExampleNewTokenBucket() {

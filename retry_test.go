@@ -62,7 +62,7 @@ func TestRetry_SuccessAfterRetry(t *testing.T) {
 		rhttp.WithTransport(rt),
 		rhttp.WithMiddleware(rhttp.Retry(rhttp.RetryConfig{
 			MaxAttempts: 3,
-			Backoff:     func(int) time.Duration { return time.Millisecond },
+			Backoff:     func(int, *http.Response) time.Duration { return time.Millisecond },
 		})),
 	)
 
@@ -92,7 +92,7 @@ func TestRetry_MaxAttemptsExhausted(t *testing.T) {
 		rhttp.WithTransport(rt),
 		rhttp.WithMiddleware(rhttp.Retry(rhttp.RetryConfig{
 			MaxAttempts: 3,
-			Backoff:     func(int) time.Duration { return time.Millisecond },
+			Backoff:     func(int, *http.Response) time.Duration { return time.Millisecond },
 		})),
 	)
 
@@ -142,7 +142,7 @@ func TestRetry_NonIdempotentMethodWithRetryAllMethods(t *testing.T) {
 		rhttp.WithMiddleware(rhttp.Retry(rhttp.RetryConfig{
 			MaxAttempts:     3,
 			RetryAllMethods: true,
-			Backoff:         func(int) time.Duration { return time.Millisecond },
+			Backoff:         func(int, *http.Response) time.Duration { return time.Millisecond },
 		})),
 	)
 
@@ -177,7 +177,7 @@ func TestRetry_ContextCancelledDuringBackoff(t *testing.T) {
 		rhttp.WithTransport(rt),
 		rhttp.WithMiddleware(rhttp.Retry(rhttp.RetryConfig{
 			MaxAttempts: 3,
-			Backoff:     func(int) time.Duration { return 10 * time.Second },
+			Backoff:     func(int, *http.Response) time.Duration { return 10 * time.Second },
 		})),
 	)
 
@@ -222,7 +222,7 @@ func TestRetry_RetryableStatusCodes(t *testing.T) {
 				rhttp.WithTransport(rt),
 				rhttp.WithMiddleware(rhttp.Retry(rhttp.RetryConfig{
 					MaxAttempts: 3,
-					Backoff:     func(int) time.Duration { return time.Millisecond },
+					Backoff:     func(int, *http.Response) time.Duration { return time.Millisecond },
 				})),
 			)
 
@@ -255,7 +255,7 @@ func TestRetry_LastAttemptBodyReadable(t *testing.T) {
 		rhttp.WithTransport(rt),
 		rhttp.WithMiddleware(rhttp.Retry(rhttp.RetryConfig{
 			MaxAttempts: 3,
-			Backoff:     func(int) time.Duration { return time.Millisecond },
+			Backoff:     func(int, *http.Response) time.Duration { return time.Millisecond },
 		})),
 	)
 
@@ -325,7 +325,7 @@ func TestRetry_NonReplayableBodyNotRetried(t *testing.T) {
 		rhttp.WithTransport(rt),
 		rhttp.WithMiddleware(rhttp.Retry(rhttp.RetryConfig{
 			MaxAttempts: 3,
-			Backoff:     func(int) time.Duration { return time.Millisecond },
+			Backoff:     func(int, *http.Response) time.Duration { return time.Millisecond },
 		})),
 	)
 
@@ -366,7 +366,7 @@ func TestRetry_DrainIsBounded(t *testing.T) {
 	})
 	wrapped := rhttp.Retry(rhttp.RetryConfig{
 		MaxAttempts: 2,
-		Backoff:     func(int) time.Duration { return 0 },
+		Backoff:     func(int, *http.Response) time.Duration { return 0 },
 	})(rt)
 
 	req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
@@ -406,7 +406,7 @@ func TestRetry_RespectsErrorClassification(t *testing.T) {
 			})
 			wrapped := rhttp.Retry(rhttp.RetryConfig{
 				MaxAttempts: 3,
-				Backoff:     func(int) time.Duration { return 0 },
+				Backoff:     func(int, *http.Response) time.Duration { return 0 },
 			})(rt)
 
 			req, _ := http.NewRequest(http.MethodGet, "https://example.com", http.NoBody)
@@ -426,7 +426,7 @@ func TestRetry_DoesNotMutateOriginalRequest(t *testing.T) {
 	wrapped := rhttp.Retry(rhttp.RetryConfig{
 		MaxAttempts:     3,
 		RetryAllMethods: true,
-		Backoff:         func(int) time.Duration { return 0 },
+		Backoff:         func(int, *http.Response) time.Duration { return 0 },
 	})(rt)
 
 	payload := []byte(`{"x":1}`)
@@ -448,7 +448,7 @@ func TestExponentialBackoff(t *testing.T) {
 
 	// Test exponential growth (with some tolerance for jitter)
 	for attempt := 0; attempt < 5; attempt++ {
-		d := backoff(attempt)
+		d := backoff(attempt, nil)
 		expected := 100 * time.Millisecond * (1 << attempt)
 		if expected > 1*time.Second {
 			expected = 1 * time.Second
@@ -461,5 +461,46 @@ func TestExponentialBackoff(t *testing.T) {
 		if d < minExpected || d > maxExpected {
 			t.Errorf("attempt %d: expected ~%v, got %v", attempt, expected, d)
 		}
+	}
+}
+
+func TestRetry_BackoffReceivesPreviousResponse(t *testing.T) {
+	var calls int32
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		n := atomic.AddInt32(&calls, 1)
+		if n == 1 {
+			resp := &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header:     make(http.Header),
+				Body:       http.NoBody,
+				Request:    req,
+			}
+			resp.Header.Set("Retry-After", "1")
+			return resp, nil
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody, Request: req}, nil
+	})
+
+	c := rhttp.New(
+		rhttp.WithTransport(rt),
+		rhttp.WithMiddleware(rhttp.Retry(rhttp.RetryConfig{
+			MaxAttempts: 3,
+			Backoff:     rhttp.WithRetryAfter(rhttp.ConstantBackoff(10 * time.Millisecond)),
+		})),
+	)
+
+	start := time.Now()
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+	resp, err := c.Do(context.Background(), req)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 after retry, got %d", resp.StatusCode)
+	}
+	if elapsed < 900*time.Millisecond {
+		t.Errorf("expected the retry to honor Retry-After (~1s), waited only %v", elapsed)
 	}
 }

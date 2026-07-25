@@ -95,9 +95,15 @@ func (r retryRoundTripper) canRetry(req *http.Request) bool {
 }
 
 func (r retryRoundTripper) prepareRequest(req *http.Request, attempt int) (*http.Request, error) {
+	// The first attempt uses the request as-is: Do already cloned it, so the
+	// caller's request is never mutated.
+	if attempt == 0 {
+		return req, nil
+	}
+
 	attemptReq := req.Clone(req.Context())
 
-	if attempt > 0 && req.GetBody != nil {
+	if req.GetBody != nil {
 		body, err := req.GetBody()
 		if err != nil {
 			return nil, err

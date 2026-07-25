@@ -1,6 +1,7 @@
 package rhttp_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -478,5 +480,52 @@ func TestRequestBuilder_SecondExecuteResendsFullBody(t *testing.T) {
 
 	if len(bodies) != 2 || bodies[0] != "payload" || bodies[1] != "payload" {
 		t.Fatalf("expected both executions to send the full body, got %q", bodies)
+	}
+}
+
+func TestRequestBuilder_LargeBodyStreamsWithoutRetry(t *testing.T) {
+	// One byte over the 10 MB buffering limit forces the streaming path.
+	const size = 10<<20 + 1
+
+	var attempts int32
+	var received int64
+	var sawGetBody bool
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		atomic.AddInt32(&attempts, 1)
+		sawGetBody = req.GetBody != nil
+		n, err := io.Copy(io.Discard, req.Body)
+		if err != nil {
+			return nil, err
+		}
+		atomic.StoreInt64(&received, n)
+		return &http.Response{StatusCode: http.StatusServiceUnavailable, Body: http.NoBody, Request: req}, nil
+	})
+
+	c := rhttp.New(
+		rhttp.WithTransport(rt),
+		rhttp.WithMiddleware(rhttp.Retry(rhttp.RetryConfig{
+			MaxAttempts: 3,
+			Backoff:     rhttp.ConstantBackoff(time.Millisecond),
+		})),
+	)
+
+	opaque := &nonReplayableReader{r: bytes.NewReader(make([]byte, size))}
+	resp, err := c.R().
+		SetBody(opaque).
+		Put("http://example.com/upload")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resp.Body.Close()
+
+	if sawGetBody {
+		t.Error("expected GetBody to be nil on the streaming path")
+	}
+	if received != size {
+		t.Errorf("expected the transport to receive %d bytes, got %d", size, received)
+	}
+	if got := atomic.LoadInt32(&attempts); got != 1 {
+		t.Errorf("expected a single attempt for a non-replayable streamed body, got %d", got)
 	}
 }

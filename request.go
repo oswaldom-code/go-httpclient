@@ -15,7 +15,7 @@ import (
 
 // RequestBuilder provides a fluent interface for building HTTP requests.
 type RequestBuilder struct {
-	client      Client
+	client      *Client
 	ctx         context.Context
 	method      string
 	url         string
@@ -28,24 +28,8 @@ type RequestBuilder struct {
 	err         error
 }
 
-// R creates a new RequestBuilder.
-func (c *client) R() *RequestBuilder {
-	return &RequestBuilder{
-		client:      c,
-		ctx:         context.Background(),
-		headers:     make(http.Header),
-		queryParams: make(url.Values),
-		pathParams:  make(map[string]string),
-	}
-}
-
-// R creates a new RequestBuilder from a Client interface.
-// Returns nil if the client doesn't support RequestBuilder.
-func R(c Client) *RequestBuilder {
-	if rc, ok := c.(interface{ R() *RequestBuilder }); ok {
-		return rc.R()
-	}
-	// Fallback: create a basic builder
+// R creates a new RequestBuilder bound to the client.
+func (c *Client) R() *RequestBuilder {
 	return &RequestBuilder{
 		client:      c,
 		ctx:         context.Background(),

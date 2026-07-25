@@ -41,7 +41,7 @@
 //
 // For a more ergonomic API, use the RequestBuilder:
 //
-//	resp, err := rhttp.R(client).
+//	resp, err := client.R().
 //		SetHeader("Authorization", "Bearer token").
 //		SetQueryParam("page", "1").
 //		SetBodyJSON(payload).

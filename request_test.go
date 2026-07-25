@@ -23,7 +23,7 @@ func TestRequestBuilder_Get(t *testing.T) {
 
 	c := rhttp.New(rhttp.WithTransport(rt))
 
-	resp, err := rhttp.R(c).Get("http://example.com/api")
+	resp, err := c.R().Get("http://example.com/api")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -48,7 +48,7 @@ func TestRequestBuilder_Post(t *testing.T) {
 
 	c := rhttp.New(rhttp.WithTransport(rt))
 
-	resp, err := rhttp.R(c).
+	resp, err := c.R().
 		SetBodyString("test body").
 		Post("http://example.com/api")
 
@@ -72,7 +72,7 @@ func TestRequestBuilder_Headers(t *testing.T) {
 
 	c := rhttp.New(rhttp.WithTransport(rt))
 
-	_, _ = rhttp.R(c).
+	_, _ = c.R().
 		SetHeader("X-Custom", "value1").
 		SetHeaders(map[string]string{
 			"X-Another": "value2",
@@ -116,7 +116,7 @@ func TestRequestBuilder_QueryParams(t *testing.T) {
 
 	c := rhttp.New(rhttp.WithTransport(rt))
 
-	_, _ = rhttp.R(c).
+	_, _ = c.R().
 		SetQueryParam("page", "1").
 		SetQueryParams(map[string]string{
 			"limit": "10",
@@ -152,7 +152,7 @@ func TestRequestBuilder_PathParams(t *testing.T) {
 
 	c := rhttp.New(rhttp.WithTransport(rt))
 
-	_, _ = rhttp.R(c).
+	_, _ = c.R().
 		SetPathParam("org", "acme").
 		SetPathParams(map[string]string{
 			"repo": "api",
@@ -178,7 +178,7 @@ func TestRequestBuilder_SetBodyJSON(t *testing.T) {
 	c := rhttp.New(rhttp.WithTransport(rt))
 
 	payload := map[string]string{"name": "test", "value": "123"}
-	_, _ = rhttp.R(c).
+	_, _ = c.R().
 		SetBodyJSON(payload).
 		Post("http://example.com/api")
 
@@ -207,7 +207,7 @@ func TestRequestBuilder_SetBodyForm(t *testing.T) {
 
 	c := rhttp.New(rhttp.WithTransport(rt))
 
-	_, _ = rhttp.R(c).
+	_, _ = c.R().
 		SetBodyForm(map[string]string{
 			"username": "test",
 			"password": "secret",
@@ -235,7 +235,7 @@ func TestRequestBuilder_SetAuthToken(t *testing.T) {
 
 	c := rhttp.New(rhttp.WithTransport(rt))
 
-	_, _ = rhttp.R(c).
+	_, _ = c.R().
 		SetAuthToken("my-token-123").
 		Get("http://example.com/api")
 
@@ -254,7 +254,7 @@ func TestRequestBuilder_SetBasicAuth(t *testing.T) {
 
 	c := rhttp.New(rhttp.WithTransport(rt))
 
-	_, _ = rhttp.R(c).
+	_, _ = c.R().
 		SetBasicAuth("user", "pass").
 		Get("http://example.com/api")
 
@@ -277,7 +277,7 @@ func TestRequestBuilder_Timeout(t *testing.T) {
 
 	c := rhttp.New(rhttp.WithTransport(rt))
 
-	_, err := rhttp.R(c).
+	_, err := c.R().
 		SetTimeout(50 * time.Millisecond).
 		Get("http://example.com/api")
 
@@ -306,7 +306,7 @@ func TestRequestBuilder_SetTimeoutBodyReadableAfterReturn(t *testing.T) {
 
 	c := rhttp.New()
 
-	resp, err := rhttp.R(c).
+	resp, err := c.R().
 		SetTimeout(5 * time.Second).
 		Get(srv.URL)
 	if err != nil {
@@ -339,7 +339,7 @@ func TestRequestBuilder_Context(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	_, err := rhttp.R(c).
+	_, err := c.R().
 		Context(ctx).
 		Get("http://example.com/api")
 
@@ -372,7 +372,7 @@ func TestRequestBuilder_AllMethods(t *testing.T) {
 			})
 
 			c := rhttp.New(rhttp.WithTransport(rt))
-			_, _ = m.fn(rhttp.R(c), "http://example.com")
+			_, _ = m.fn(c.R(), "http://example.com")
 
 			if capturedMethod != m.expect {
 				t.Errorf("expected %s, got %s", m.expect, capturedMethod)
@@ -404,7 +404,7 @@ func TestRequestBuilder_ReaderBodyIsRetryable(t *testing.T) {
 		})),
 	)
 
-	_, _ = rhttp.R(c).
+	_, _ = c.R().
 		SetBody(&opaqueReader{r: strings.NewReader("payload")}).
 		Post("http://example.com")
 
@@ -429,7 +429,7 @@ func BenchmarkRequestBuilder_Simple(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		_, _ = rhttp.R(c).Get("http://example.com")
+		_, _ = c.R().Get("http://example.com")
 	}
 }
 
@@ -444,7 +444,7 @@ func BenchmarkRequestBuilder_WithOptions(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		_, _ = rhttp.R(c).
+		_, _ = c.R().
 			SetHeader("Authorization", "Bearer token").
 			SetQueryParam("page", "1").
 			SetPathParam("id", "123").

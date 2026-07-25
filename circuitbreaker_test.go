@@ -350,7 +350,7 @@ func (b *blockingProbe) rt() internal.RoundTripperFunc {
 	}
 }
 
-func openCircuit(t *testing.T, c rhttp.Client, times int) {
+func openCircuit(t *testing.T, c *rhttp.Client, times int) {
 	t.Helper()
 	for i := 0; i < times; i++ {
 		req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)

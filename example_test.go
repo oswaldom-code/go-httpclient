@@ -51,11 +51,11 @@ func ExampleNew_withMiddleware() {
 	fmt.Println("Status:", resp.StatusCode)
 }
 
-func ExampleR() {
+func ExampleClient_R() {
 	client := rhttp.New()
 
 	// Use the fluent API to build and execute requests
-	resp, err := rhttp.R(client).
+	resp, err := client.R().
 		SetHeader("Authorization", "Bearer token").
 		SetQueryParam("page", "1").
 		Get("https://api.example.com/users")
@@ -79,7 +79,7 @@ func ExampleRequestBuilder_SetBodyJSON() {
 
 	user := User{Name: "John", Email: "john@example.com"}
 
-	resp, err := rhttp.R(client).
+	resp, err := client.R().
 		SetBodyJSON(user).
 		Post("https://api.example.com/users")
 
@@ -96,7 +96,7 @@ func ExampleRequestBuilder_SetPathParam() {
 	client := rhttp.New()
 
 	// Path parameters are replaced in the URL template
-	resp, err := rhttp.R(client).
+	resp, err := client.R().
 		SetPathParam("id", "123").
 		Get("https://api.example.com/users/{id}")
 

@@ -97,14 +97,14 @@ func main() {
 client := rhttp.New()
 
 // GET request with query params
-resp, err := rhttp.R(client).
+resp, err := client.R().
     SetHeader("Authorization", "Bearer token").
     SetQueryParam("page", "1").
     SetQueryParam("limit", "10").
     Get("https://api.example.com/users")
 
 // POST request with JSON body
-resp, err := rhttp.R(client).
+resp, err := client.R().
     SetAuthToken("my-token").
     SetBodyJSON(map[string]string{
         "name":  "John",
@@ -113,7 +113,7 @@ resp, err := rhttp.R(client).
     Post("https://api.example.com/users")
 
 // Path parameters
-resp, err := rhttp.R(client).
+resp, err := client.R().
     SetPathParam("org", "acme").
     SetPathParam("repo", "api").
     Get("https://api.github.com/repos/{org}/{repo}")

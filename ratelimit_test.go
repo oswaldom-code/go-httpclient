@@ -29,6 +29,39 @@ func TestTokenBucket_Basic(t *testing.T) {
 	}
 }
 
+func TestNewTokenBucket_ZeroRateIsUnlimited(t *testing.T) {
+	tb := rhttp.NewTokenBucket(0, 1)
+
+	// An invalid rate must not limit: without the guard, only the initial burst
+	// token is granted and WaitContext then busy-loops on a negative wait time.
+	for i := 0; i < 10; i++ {
+		if !tb.TryAcquire() {
+			t.Fatalf("attempt %d: invalid rate must not limit", i)
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if err := tb.WaitContext(ctx); err != nil {
+		t.Fatalf("WaitContext on unlimited bucket returned error: %v", err)
+	}
+}
+
+func TestNewTokenBucket_ZeroBurstIsUnlimited(t *testing.T) {
+	tb := rhttp.NewTokenBucket(10, 0)
+
+	// Zero burst must not block forever (maxTokens == 0 → TryAcquire never true).
+	if !tb.TryAcquire() {
+		t.Fatal("zero burst must not block forever")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if err := tb.WaitContext(ctx); err != nil {
+		t.Fatalf("WaitContext on unlimited bucket returned error: %v", err)
+	}
+}
+
 func TestTokenBucket_Refill(t *testing.T) {
 	tb := rhttp.NewTokenBucket(100, 1) // 100 req/s, burst of 1
 

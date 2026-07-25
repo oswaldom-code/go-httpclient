@@ -30,12 +30,21 @@ type TokenBucket struct {
 	maxTokens  float64
 	refillRate float64 // tokens per second
 	lastRefill time.Time
+	unlimited  bool
 }
 
 // NewTokenBucket creates a new token bucket rate limiter.
 // rate: requests per second allowed
 // burst: maximum burst size (bucket capacity)
+//
+// A non-positive rate or a burst below 1 is invalid configuration: the returned
+// bucket does not limit (it allows every request), following the project
+// convention that invalid config becomes a no-op rather than a busy-loop or a
+// permanent block.
 func NewTokenBucket(rate float64, burst int) *TokenBucket {
+	if rate <= 0 || burst < 1 {
+		return &TokenBucket{unlimited: true}
+	}
 	return &TokenBucket{
 		tokens:     float64(burst),
 		maxTokens:  float64(burst),
@@ -72,6 +81,10 @@ func (tb *TokenBucket) WaitContext(ctx context.Context) error {
 
 // TryAcquire attempts to acquire a token without blocking.
 func (tb *TokenBucket) TryAcquire() bool {
+	if tb.unlimited {
+		return true
+	}
+
 	tb.mu.Lock()
 	defer tb.mu.Unlock()
 

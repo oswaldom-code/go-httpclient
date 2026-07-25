@@ -791,3 +791,17 @@ func TestCircuitBreaker_StaleResultDoesNotCloseHalfOpen(t *testing.T) {
 	close(relC)
 	wg.Wait()
 }
+
+func TestCircuitState_String(t *testing.T) {
+	cases := map[rhttp.CircuitState]string{
+		rhttp.CircuitClosed:    "closed",
+		rhttp.CircuitOpen:      "open",
+		rhttp.CircuitHalfOpen:  "half-open",
+		rhttp.CircuitState(99): "unknown",
+	}
+	for state, want := range cases {
+		if got := state.String(); got != want {
+			t.Errorf("state %d: expected %q, got %q", int(state), want, got)
+		}
+	}
+}

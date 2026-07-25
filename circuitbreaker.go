@@ -15,6 +15,20 @@ const (
 	CircuitHalfOpen
 )
 
+// String returns the lowercase name of the state.
+func (s CircuitState) String() string {
+	switch s {
+	case CircuitClosed:
+		return "closed"
+	case CircuitOpen:
+		return "open"
+	case CircuitHalfOpen:
+		return "half-open"
+	default:
+		return "unknown"
+	}
+}
+
 // CircuitBreakerConfig configures the circuit breaker middleware.
 type CircuitBreakerConfig struct {
 	// FailureThreshold is the number of consecutive failures before opening the circuit.

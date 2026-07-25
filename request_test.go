@@ -2,7 +2,9 @@ package rhttp_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -258,8 +260,9 @@ func TestRequestBuilder_SetBasicAuth(t *testing.T) {
 		Get("http://example.com/api")
 
 	auth := capturedReq.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Basic ") {
-		t.Errorf("expected Authorization to start with 'Basic ', got %s", auth)
+	want := "Basic " + base64.StdEncoding.EncodeToString([]byte("user:pass"))
+	if auth != want {
+		t.Errorf("expected Authorization %q, got %q", want, auth)
 	}
 }
 
@@ -283,8 +286,8 @@ func TestRequestBuilder_Timeout(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}
-	if !strings.Contains(err.Error(), "context deadline exceeded") {
-		t.Errorf("expected deadline exceeded error, got %v", err)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("expected context.DeadlineExceeded, got %v", err)
 	}
 }
 

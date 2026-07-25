@@ -212,6 +212,30 @@ func TestCircuitBreaker_HalfOpenFailureReopens(t *testing.T) {
 }
 
 func TestCircuitBreaker_SuccessResetsFailureCount(t *testing.T) {
+	// Control case: with threshold 3 and no intermediate success, the third
+	// consecutive failure must open the circuit. Without this, the assertion
+	// below would also pass if failures were never counted at all.
+	var failCalls int32
+	failRT := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		atomic.AddInt32(&failCalls, 1)
+		return nil, errors.New("connection refused")
+	})
+	cFail := rhttp.New(
+		rhttp.WithTransport(failRT),
+		rhttp.WithMiddleware(rhttp.CircuitBreaker(rhttp.CircuitBreakerConfig{
+			FailureThreshold: 3,
+			ResetTimeout:     1 * time.Hour,
+		})),
+	)
+	for i := 0; i < 3; i++ {
+		req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+		_, _ = cFail.Do(context.Background(), req)
+	}
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+	if _, err := cFail.Do(context.Background(), req); !errors.Is(err, rhttp.ErrCircuitOpen) {
+		t.Fatalf("control case: expected open circuit after 3 straight failures, got %v", err)
+	}
+
 	callCount := 0
 	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		callCount++
@@ -237,7 +261,7 @@ func TestCircuitBreaker_SuccessResetsFailureCount(t *testing.T) {
 	}
 
 	// 1 success - should reset counter
-	req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+	req, _ = http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
 	_, _ = c.Do(context.Background(), req)
 
 	// 2 more failures - should not open circuit (counter was reset)

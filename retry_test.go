@@ -111,7 +111,8 @@ func TestRetry_NonIdempotentMethodNotRetried(t *testing.T) {
 	var attempts int32
 	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&attempts, 1)
-		return nil, errors.New("connection refused")
+		// A genuinely retryable error: proves the method guard is what stops the retry.
+		return nil, syscall.ECONNREFUSED
 	})
 
 	c := rhttp.New(
@@ -318,7 +319,8 @@ func TestRetry_NonReplayableBodyNotRetried(t *testing.T) {
 	var attempts int32
 	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&attempts, 1)
-		return nil, errors.New("connection refused")
+		// A genuinely retryable error: proves the body guard is what stops the retry.
+		return nil, syscall.ECONNREFUSED
 	})
 
 	c := rhttp.New(

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/oswaldom-code/rhttp"
-	"github.com/oswaldom-code/rhttp/internal"
 )
 
 func TestMetrics_RecordsSuccessfulRequest(t *testing.T) {
@@ -20,7 +19,7 @@ func TestMetrics_RecordsSuccessfulRequest(t *testing.T) {
 		captured = event
 	})
 
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode:    http.StatusOK,
 			ContentLength: 1024,
@@ -71,7 +70,7 @@ func TestMetrics_NilPathNormalizerEmitsEmptyPath(t *testing.T) {
 		captured = event
 	})
 
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
 
@@ -99,7 +98,7 @@ func TestMetrics_PathNormalizerTransformsPath(t *testing.T) {
 		captured = event
 	})
 
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
 
@@ -133,7 +132,7 @@ func TestMetrics_RecordsFailedRequest(t *testing.T) {
 	})
 
 	expectedErr := errors.New("connection refused")
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return nil, expectedErr
 	})
 
@@ -164,7 +163,7 @@ func TestMetrics_5xxIsNotSuccess(t *testing.T) {
 		captured = event
 	})
 
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusInternalServerError, Request: req}, nil
 	})
 
@@ -192,7 +191,7 @@ func TestMetrics_4xxIsSuccess(t *testing.T) {
 		captured = event
 	})
 
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusNotFound, Request: req}, nil
 	})
 
@@ -213,7 +212,7 @@ func TestMetrics_4xxIsSuccess(t *testing.T) {
 }
 
 func TestMetrics_NilRecorderIsNoOp(t *testing.T) {
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
 
@@ -241,7 +240,7 @@ func TestMetrics_RecordsBytesSent(t *testing.T) {
 		captured = event
 	})
 
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
 
@@ -268,7 +267,7 @@ func TestMetrics_MeasuresDuration(t *testing.T) {
 		captured = event
 	})
 
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		time.Sleep(50 * time.Millisecond)
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
@@ -297,7 +296,7 @@ func TestMetrics_ThreadSafety(t *testing.T) {
 		mu.Unlock()
 	})
 
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
 

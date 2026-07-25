@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/oswaldom-code/rhttp"
-	"github.com/oswaldom-code/rhttp/internal"
 )
 
 func TestTokenBucket_Basic(t *testing.T) {
@@ -120,7 +119,7 @@ func (a xRateAdapter) WaitContext(ctx context.Context) error { return a.l.Wait(c
 func TestRateLimiter_XTimeRateAdapter(t *testing.T) {
 	var limiter rhttp.RateLimiter = xRateAdapter{}
 
-	rt := internal.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
 	})
 	c := rhttp.New(
@@ -161,7 +160,7 @@ func TestTokenBucket_Concurrent(t *testing.T) {
 
 func TestRateLimit_Middleware(t *testing.T) {
 	var calls int32
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&calls, 1)
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
@@ -190,7 +189,7 @@ func TestRateLimit_Middleware(t *testing.T) {
 }
 
 func TestRateLimit_NoWait(t *testing.T) {
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
 
@@ -220,7 +219,7 @@ func TestRateLimit_NoWait(t *testing.T) {
 
 func TestRateLimit_RespectRetryAfter(t *testing.T) {
 	callCount := 0
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		callCount++
 		if callCount == 1 {
 			resp := &http.Response{
@@ -268,7 +267,7 @@ func TestRateLimit_RespectRetryAfter(t *testing.T) {
 }
 
 func TestRateLimit_NilLimiter(t *testing.T) {
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
 

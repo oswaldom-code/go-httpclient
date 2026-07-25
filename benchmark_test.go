@@ -7,12 +7,11 @@ import (
 	"time"
 
 	"github.com/oswaldom-code/rhttp"
-	"github.com/oswaldom-code/rhttp/internal"
 )
 
 // noopRoundTripper returns immediately with a 200 OK response.
 // This isolates the benchmark to measure only client/middleware overhead.
-var noopRoundTripper = internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+var noopRoundTripper = rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 	return &http.Response{
 		StatusCode: http.StatusOK,
 		Body:       http.NoBody,

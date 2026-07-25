@@ -6,11 +6,10 @@ import (
 	"testing"
 
 	"github.com/oswaldom-code/rhttp"
-	"github.com/oswaldom-code/rhttp/internal"
 )
 
 func TestClient_Do(t *testing.T) {
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Request:    req,
@@ -43,20 +42,20 @@ func TestClient_MiddlewareChain(t *testing.T) {
 	var order []int
 
 	mw1 := func(next http.RoundTripper) http.RoundTripper {
-		return internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 			order = append(order, 1)
 			return next.RoundTrip(req)
 		})
 	}
 
 	mw2 := func(next http.RoundTripper) http.RoundTripper {
-		return internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 			order = append(order, 2)
 			return next.RoundTrip(req)
 		})
 	}
 
-	base := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	base := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		order = append(order, 0)
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})

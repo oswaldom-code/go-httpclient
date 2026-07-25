@@ -16,12 +16,11 @@ import (
 	"time"
 
 	"github.com/oswaldom-code/rhttp"
-	"github.com/oswaldom-code/rhttp/internal"
 )
 
 func TestRetry_SuccessOnFirstAttempt(t *testing.T) {
 	var attempts int32
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&attempts, 1)
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
@@ -47,7 +46,7 @@ func TestRetry_SuccessOnFirstAttempt(t *testing.T) {
 
 func TestRetry_SuccessAfterRetry(t *testing.T) {
 	var attempts int32
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		n := atomic.AddInt32(&attempts, 1)
 		if n < 3 {
 			return &http.Response{
@@ -84,7 +83,7 @@ func TestRetry_SuccessAfterRetry(t *testing.T) {
 func TestRetry_MaxAttemptsExhausted(t *testing.T) {
 	var attempts int32
 	expectedErr := syscall.ECONNREFUSED
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&attempts, 1)
 		return nil, expectedErr
 	})
@@ -110,7 +109,7 @@ func TestRetry_MaxAttemptsExhausted(t *testing.T) {
 
 func TestRetry_NonIdempotentMethodNotRetried(t *testing.T) {
 	var attempts int32
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&attempts, 1)
 		return nil, errors.New("connection refused")
 	})
@@ -130,7 +129,7 @@ func TestRetry_NonIdempotentMethodNotRetried(t *testing.T) {
 
 func TestRetry_NonIdempotentMethodWithRetryAllMethods(t *testing.T) {
 	var attempts int32
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		n := atomic.AddInt32(&attempts, 1)
 		if n < 2 {
 			return nil, syscall.ECONNREFUSED
@@ -169,7 +168,7 @@ func TestRetry_NonIdempotentMethodWithRetryAllMethods(t *testing.T) {
 
 func TestRetry_ContextCancelledDuringBackoff(t *testing.T) {
 	var attempts int32
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&attempts, 1)
 		return nil, syscall.ECONNREFUSED
 	})
@@ -207,7 +206,7 @@ func TestRetry_RetryableStatusCodes(t *testing.T) {
 	for _, code := range retryableCodes {
 		t.Run(http.StatusText(code), func(t *testing.T) {
 			var attempts int32
-			rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				n := atomic.AddInt32(&attempts, 1)
 				if n < 2 {
 					return &http.Response{
@@ -243,7 +242,7 @@ func TestRetry_RetryableStatusCodes(t *testing.T) {
 func TestRetry_LastAttemptBodyReadable(t *testing.T) {
 	const payload = "final-503-body"
 	var attempts int32
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&attempts, 1)
 		return &http.Response{
 			StatusCode: http.StatusServiceUnavailable,
@@ -281,7 +280,7 @@ func TestRetry_LastAttemptBodyReadable(t *testing.T) {
 
 func TestRetry_NonRetryableStatusCode(t *testing.T) {
 	var attempts int32
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&attempts, 1)
 		return &http.Response{
 			StatusCode: http.StatusBadRequest,
@@ -317,7 +316,7 @@ func (n *nonReplayableReader) Read(p []byte) (int, error) {
 
 func TestRetry_NonReplayableBodyNotRetried(t *testing.T) {
 	var attempts int32
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&attempts, 1)
 		return nil, errors.New("connection refused")
 	})
@@ -358,7 +357,7 @@ func (c *countingBody) Close() error { return nil }
 func TestRetry_DrainIsBounded(t *testing.T) {
 	body := &countingBody{Reader: strings.NewReader(strings.Repeat("a", 8<<20))}
 	first := true
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		if first {
 			first = false
 			return &http.Response{StatusCode: http.StatusServiceUnavailable, Body: body, Request: req}, nil
@@ -401,7 +400,7 @@ func TestRetry_RespectsErrorClassification(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var attempts int32
-			rt := internal.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
+			rt := rhttp.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
 				atomic.AddInt32(&attempts, 1)
 				return nil, tc.err
 			})
@@ -421,7 +420,7 @@ func TestRetry_RespectsErrorClassification(t *testing.T) {
 }
 
 func TestRetry_DoesNotMutateOriginalRequest(t *testing.T) {
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusServiceUnavailable, Body: http.NoBody, Request: req}, nil
 	})
 	wrapped := rhttp.Retry(rhttp.RetryConfig{

@@ -11,12 +11,11 @@ import (
 	"time"
 
 	"github.com/oswaldom-code/rhttp"
-	"github.com/oswaldom-code/rhttp/internal"
 )
 
 func TestCircuitBreaker_ClosedState_AllowsRequests(t *testing.T) {
 	var calls int32
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&calls, 1)
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
@@ -47,7 +46,7 @@ func TestCircuitBreaker_ClosedState_AllowsRequests(t *testing.T) {
 
 func TestCircuitBreaker_OpensAfterFailureThreshold(t *testing.T) {
 	var calls int32
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&calls, 1)
 		return nil, errors.New("connection refused")
 	})
@@ -87,7 +86,7 @@ func TestCircuitBreaker_OpensAfterFailureThreshold(t *testing.T) {
 func TestCircuitBreaker_TransitionsToHalfOpenAfterTimeout(t *testing.T) {
 	var calls int32
 	shouldSucceed := false
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&calls, 1)
 		if shouldSucceed {
 			return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
@@ -134,7 +133,7 @@ func TestCircuitBreaker_TransitionsToHalfOpenAfterTimeout(t *testing.T) {
 
 func TestCircuitBreaker_HalfOpenSuccessCloses(t *testing.T) {
 	callCount := 0
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		callCount++
 		if callCount <= 2 {
 			return nil, errors.New("connection refused")
@@ -177,7 +176,7 @@ func TestCircuitBreaker_HalfOpenSuccessCloses(t *testing.T) {
 }
 
 func TestCircuitBreaker_HalfOpenFailureReopens(t *testing.T) {
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return nil, errors.New("connection refused")
 	})
 
@@ -213,7 +212,7 @@ func TestCircuitBreaker_HalfOpenFailureReopens(t *testing.T) {
 
 func TestCircuitBreaker_SuccessResetsFailureCount(t *testing.T) {
 	callCount := 0
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		callCount++
 		// Fail on calls 1, 2, then succeed, then fail on 4, 5
 		if callCount <= 2 || callCount >= 4 && callCount <= 5 {
@@ -258,7 +257,7 @@ func TestCircuitBreaker_SuccessResetsFailureCount(t *testing.T) {
 
 func TestCircuitBreaker_5xxStatusCountsAsFailure(t *testing.T) {
 	var calls int32
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&calls, 1)
 		return &http.Response{StatusCode: http.StatusInternalServerError, Request: req}, nil
 	})
@@ -291,7 +290,7 @@ func TestCircuitBreaker_5xxStatusCountsAsFailure(t *testing.T) {
 
 func TestCircuitBreaker_ThreadSafety(t *testing.T) {
 	var calls int64
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt64(&calls, 1)
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
@@ -338,7 +337,7 @@ func newBlockingProbe() *blockingProbe {
 	}
 }
 
-func (b *blockingProbe) rt() internal.RoundTripperFunc {
+func (b *blockingProbe) rt() rhttp.RoundTripperFunc {
 	return func(req *http.Request) (*http.Response, error) {
 		if !b.halfOpen.Load() {
 			return nil, errors.New("connection refused")
@@ -448,7 +447,7 @@ func TestCircuitBreaker_HalfOpenRespectsMaxHalfOpenRequests(t *testing.T) {
 
 func TestCircuitBreaker_OneSuccessDoesNotCloseWithThreshold(t *testing.T) {
 	var succeed atomic.Bool
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		if succeed.Load() {
 			return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 		}
@@ -489,7 +488,7 @@ func TestCircuitBreaker_OneSuccessDoesNotCloseWithThreshold(t *testing.T) {
 func TestCircuitBreaker_ClosesAfterSuccessThreshold(t *testing.T) {
 	var succeed atomic.Bool
 	var calls int32
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&calls, 1)
 		if succeed.Load() {
 			return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
@@ -545,10 +544,10 @@ func TestCircuitBreaker_MiddlewareApplicationsAreIndependent(t *testing.T) {
 	})
 
 	backendErr := errors.New("backend down")
-	failing := internal.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
+	failing := rhttp.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return nil, backendErr
 	})
-	healthy := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	healthy := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody, Request: req}, nil
 	})
 
@@ -577,10 +576,10 @@ func TestCircuitBreaker_SharedInstanceSharesState(t *testing.T) {
 	})
 
 	backendErr := errors.New("backend down")
-	failing := internal.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
+	failing := rhttp.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return nil, backendErr
 	})
-	healthy := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	healthy := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody, Request: req}, nil
 	})
 
@@ -602,7 +601,7 @@ func TestCircuitBreaker_ClientCancellationsDoNotOpenCircuit(t *testing.T) {
 	rt := rhttp.CircuitBreaker(rhttp.CircuitBreakerConfig{
 		FailureThreshold: 3,
 		ResetTimeout:     time.Hour,
-	})(internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	})(rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return nil, &url.Error{Op: "Get", URL: req.URL.String(), Err: context.Canceled}
 	}))
 
@@ -620,7 +619,7 @@ func TestCircuitBreaker_TimeoutsOpenCircuit(t *testing.T) {
 	rt := rhttp.CircuitBreaker(rhttp.CircuitBreakerConfig{
 		FailureThreshold: 3,
 		ResetTimeout:     time.Hour,
-	})(internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	})(rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return nil, &url.Error{Op: "Get", URL: req.URL.String(), Err: context.DeadlineExceeded}
 	}))
 
@@ -636,7 +635,7 @@ func TestCircuitBreaker_TimeoutsOpenCircuit(t *testing.T) {
 
 func TestCircuitBreaker_CustomIsFailure(t *testing.T) {
 	var calls int32
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&calls, 1)
 		// Return 429 which is not a 5xx
 		return &http.Response{StatusCode: http.StatusTooManyRequests, Request: req}, nil
@@ -688,7 +687,7 @@ func TestCircuitBreaker_IsFailureMayCallState(t *testing.T) {
 		},
 	})
 
-	rt := internal.RoundTripperFunc(func(_ *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(_ *http.Request) (*http.Response, error) {
 		return nil, errors.New("boom")
 	})
 	c := rhttp.New(
@@ -720,7 +719,7 @@ func TestCircuitBreaker_StaleResultDoesNotCloseHalfOpen(t *testing.T) {
 	enteredC := make(chan struct{})
 	relC := make(chan struct{})
 
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		switch req.Header.Get("X-Role") {
 		case "fail":
 			return nil, errors.New("connection refused")

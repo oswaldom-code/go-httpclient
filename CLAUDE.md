@@ -7,8 +7,8 @@ Production-grade HTTP client for Go with built-in resiliency patterns. Zero exte
 
 ```
 rhttp/                    # Package rhttp lives at the module root
-├── client.go             # Client interface and New() constructor
-├── middleware.go         # Middleware type and chain() function
+├── client.go             # Client struct and New() constructor
+├── middleware.go         # Middleware and RoundTripperFunc types, chain()
 ├── transport.go          # Optimized DefaultTransport()
 ├── options.go            # Functional options pattern
 ├── errors.go             # Sentinel errors
@@ -22,8 +22,6 @@ rhttp/                    # Package rhttp lives at the module root
 ├── metrics.go            # Metrics middleware
 ├── request.go            # Fluent API (RequestBuilder)
 ├── pool.go               # Object pooling with sync.Pool
-├── internal/             # Internal package
-│   └── roundtripper.go
 ├── examples/             # Runnable examples
 ├── .github/workflows/    # CI with GitHub Actions
 ├── Makefile              # Development commands
@@ -66,7 +64,7 @@ func MyMiddleware(cfg Config) Middleware {
 ### Tests
 - Use standard `testing` package (project does NOT use ginkgo/gomega by design - zero deps)
 - Name files `*_test.go`
-- Use `internal.MockRoundTripper` for transport mocks
+- Use `rhttp.RoundTripperFunc` for transport mocks
 - Respect context in mocks with `select { case <-req.Context().Done(): ... }`
 
 ### Errors

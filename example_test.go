@@ -237,3 +237,25 @@ func ExampleRetry_perAttemptTimeout() {
 
 	fmt.Println("Status:", resp.StatusCode)
 }
+
+func ExampleRoundTripperFunc() {
+	// A custom middleware is a function over RoundTripperFunc: five lines.
+	withRequestID := func(next http.RoundTripper) http.RoundTripper {
+		return rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			req.Header.Set("X-Request-ID", "abc-123")
+			return next.RoundTrip(req)
+		})
+	}
+
+	client := rhttp.New(rhttp.WithMiddleware(withRequestID))
+
+	req, _ := http.NewRequest("GET", "https://api.example.com/users", http.NoBody)
+	resp, err := client.Do(context.Background(), req)
+	if err != nil {
+		fmt.Println("request failed:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	fmt.Println("Status:", resp.StatusCode)
+}

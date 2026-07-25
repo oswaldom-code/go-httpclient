@@ -11,12 +11,11 @@ import (
 	"time"
 
 	"github.com/oswaldom-code/rhttp"
-	"github.com/oswaldom-code/rhttp/internal"
 )
 
 func TestRequestBuilder_Get(t *testing.T) {
 	var capturedReq *http.Request
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		capturedReq = req
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
@@ -41,7 +40,7 @@ func TestRequestBuilder_Get(t *testing.T) {
 
 func TestRequestBuilder_Post(t *testing.T) {
 	var capturedReq *http.Request
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		capturedReq = req
 		return &http.Response{StatusCode: http.StatusCreated, Request: req}, nil
 	})
@@ -65,7 +64,7 @@ func TestRequestBuilder_Post(t *testing.T) {
 
 func TestRequestBuilder_Headers(t *testing.T) {
 	var capturedReq *http.Request
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		capturedReq = req
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
@@ -109,7 +108,7 @@ func TestRequestBuilder_Headers(t *testing.T) {
 
 func TestRequestBuilder_QueryParams(t *testing.T) {
 	var capturedReq *http.Request
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		capturedReq = req
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
@@ -145,7 +144,7 @@ func TestRequestBuilder_QueryParams(t *testing.T) {
 
 func TestRequestBuilder_PathParams(t *testing.T) {
 	var capturedReq *http.Request
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		capturedReq = req
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
@@ -169,7 +168,7 @@ func TestRequestBuilder_PathParams(t *testing.T) {
 func TestRequestBuilder_SetBodyJSON(t *testing.T) {
 	var capturedReq *http.Request
 	var capturedBody []byte
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		capturedReq = req
 		capturedBody, _ = io.ReadAll(req.Body)
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
@@ -198,7 +197,7 @@ func TestRequestBuilder_SetBodyJSON(t *testing.T) {
 func TestRequestBuilder_SetBodyForm(t *testing.T) {
 	var capturedReq *http.Request
 	var capturedBody string
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		capturedReq = req
 		body, _ := io.ReadAll(req.Body)
 		capturedBody = string(body)
@@ -228,7 +227,7 @@ func TestRequestBuilder_SetBodyForm(t *testing.T) {
 
 func TestRequestBuilder_SetAuthToken(t *testing.T) {
 	var capturedReq *http.Request
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		capturedReq = req
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
@@ -247,7 +246,7 @@ func TestRequestBuilder_SetAuthToken(t *testing.T) {
 
 func TestRequestBuilder_SetBasicAuth(t *testing.T) {
 	var capturedReq *http.Request
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		capturedReq = req
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
@@ -265,7 +264,7 @@ func TestRequestBuilder_SetBasicAuth(t *testing.T) {
 }
 
 func TestRequestBuilder_Timeout(t *testing.T) {
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		// Respect context cancellation
 		select {
 		case <-req.Context().Done():
@@ -324,7 +323,7 @@ func TestRequestBuilder_SetTimeoutBodyReadableAfterReturn(t *testing.T) {
 }
 
 func TestRequestBuilder_Context(t *testing.T) {
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		// Respect context cancellation
 		select {
 		case <-req.Context().Done():
@@ -366,7 +365,7 @@ func TestRequestBuilder_AllMethods(t *testing.T) {
 	for _, m := range methods {
 		t.Run(m.name, func(t *testing.T) {
 			var capturedMethod string
-			rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				capturedMethod = req.Method
 				return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 			})
@@ -388,7 +387,7 @@ func (o *opaqueReader) Read(p []byte) (int, error) { return o.r.Read(p) }
 func TestRequestBuilder_ReaderBodyIsRetryable(t *testing.T) {
 	attempts := 0
 	var bodies []string
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		attempts++
 		b, _ := io.ReadAll(req.Body)
 		bodies = append(bodies, string(b))
@@ -419,7 +418,7 @@ func TestRequestBuilder_ReaderBodyIsRetryable(t *testing.T) {
 }
 
 func BenchmarkRequestBuilder_Simple(b *testing.B) {
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
 
@@ -434,7 +433,7 @@ func BenchmarkRequestBuilder_Simple(b *testing.B) {
 }
 
 func BenchmarkRequestBuilder_WithOptions(b *testing.B) {
-	rt := internal.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Request: req}, nil
 	})
 

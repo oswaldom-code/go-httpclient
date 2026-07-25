@@ -77,7 +77,8 @@
 //
 // All types in this package are safe for concurrent use unless otherwise noted.
 // The [Client] can be shared across goroutines, and middleware implementations
-// are designed to be thread-safe.
+// are designed to be thread-safe. The exception is [RequestBuilder]: each
+// builder is meant for a single request from a single goroutine.
 //
 // # Zero Dependencies
 //

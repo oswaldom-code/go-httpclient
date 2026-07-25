@@ -14,6 +14,11 @@ import (
 )
 
 // RequestBuilder provides a fluent interface for building HTTP requests.
+//
+// A builder is meant for a single request and is not safe for concurrent use.
+// Bodies set from bytes (SetBodyBytes, SetBodyString, SetBodyJSON, SetBodyXML,
+// SetBodyForm) survive re-execution; a body set from a reader via SetBody is
+// consumed by the first execution.
 type RequestBuilder struct {
 	client      *Client
 	ctx         context.Context
@@ -260,7 +265,7 @@ func (rb *RequestBuilder) resolveBody() (io.Reader, []byte, error) {
 		return nil, rb.bodyBytes, nil
 	}
 	if rb.bodyBytes != nil {
-		return rb.body, rb.bodyBytes, nil
+		return bytes.NewReader(rb.bodyBytes), rb.bodyBytes, nil
 	}
 	buf, stream, err := bufferBody(rb.body)
 	if err != nil {
@@ -312,12 +317,8 @@ func (rb *RequestBuilder) execute() (*http.Response, error) {
 		req.ContentLength = int64(len(bodyBytes))
 	}
 
-	// Apply headers
-	for k, vals := range rb.headers {
-		for _, v := range vals {
-			req.Header.Add(k, v)
-		}
-	}
+	// Client.Do clones the request, so sharing the builder's header map is safe.
+	req.Header = rb.headers
 
 	// Apply timeout
 	ctx := rb.ctx

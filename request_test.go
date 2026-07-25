@@ -450,3 +450,30 @@ func BenchmarkRequestBuilder_WithOptions(b *testing.B) {
 			Get("http://example.com/users/{id}")
 	}
 }
+
+func TestRequestBuilder_SecondExecuteResendsFullBody(t *testing.T) {
+	var bodies []string
+	rt := rhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		data, err := io.ReadAll(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		bodies = append(bodies, string(data))
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody, Request: req}, nil
+	})
+
+	c := rhttp.New(rhttp.WithTransport(rt))
+	rb := c.R().SetBodyBytes([]byte("payload"))
+
+	for i := 0; i < 2; i++ {
+		resp, err := rb.Post("http://example.com")
+		if err != nil {
+			t.Fatalf("execute %d: unexpected error: %v", i, err)
+		}
+		resp.Body.Close()
+	}
+
+	if len(bodies) != 2 || bodies[0] != "payload" || bodies[1] != "payload" {
+		t.Fatalf("expected both executions to send the full body, got %q", bodies)
+	}
+}

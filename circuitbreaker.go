@@ -148,10 +148,10 @@ func (cb *circuitBreaker) recordHalfOpenResult(isFailure bool) {
 }
 
 func (cb *circuitBreaker) recordResult(resp *http.Response, err error) {
+	isFailure := cb.cfg.IsFailure(resp, err)
+
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
-
-	isFailure := cb.cfg.IsFailure(resp, err)
 
 	switch cb.state {
 	case CircuitClosed:

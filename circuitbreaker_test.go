@@ -676,3 +676,36 @@ func TestCircuitBreaker_CustomIsFailure(t *testing.T) {
 		t.Fatalf("expected circuit to open with custom IsFailure, got %v", err)
 	}
 }
+
+func TestCircuitBreaker_IsFailureMayCallState(t *testing.T) {
+	var scb *rhttp.SharedCircuitBreaker
+	scb = rhttp.NewCircuitBreaker(rhttp.CircuitBreakerConfig{
+		FailureThreshold: 2,
+		IsFailure: func(_ *http.Response, err error) bool {
+			// A user callback that inspects the breaker must not deadlock.
+			_ = scb.State()
+			return err != nil
+		},
+	})
+
+	rt := internal.RoundTripperFunc(func(_ *http.Request) (*http.Response, error) {
+		return nil, errors.New("boom")
+	})
+	c := rhttp.New(
+		rhttp.WithTransport(rt),
+		rhttp.WithMiddleware(scb.Middleware()),
+	)
+
+	done := make(chan struct{})
+	go func() {
+		req, _ := http.NewRequest(http.MethodGet, "http://example.com", http.NoBody)
+		_, _ = c.Do(context.Background(), req)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("IsFailure calling State() deadlocked recordResult")
+	}
+}

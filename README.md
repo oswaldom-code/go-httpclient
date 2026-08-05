@@ -275,19 +275,25 @@ if err != nil {
     case rhttp.ErrKindConnection:
         // Connection refused, reset, etc.
     case rhttp.ErrKindDNS:
-        // DNS resolution failed
+        // DNS resolution failed, transiently
+    case rhttp.ErrKindDNSNotFound:
+        // NXDOMAIN: the name does not exist. Permanent, never retried
     case rhttp.ErrKindTLS:
         // Certificate error
-    case rhttp.ErrKindTemporary:
-        // Temporary error, may resolve on retry
     }
 
     // Or use helpers
     if rhttp.IsRetryable(err) {
-        // Safe to retry (timeout, connection, DNS, temporary)
+        // Safe to retry (timeout, connection, transient DNS)
     }
 }
 ```
+
+`ErrKindDNS` and `ErrKindDNSNotFound` are split because they call for opposite
+handling: a SERVFAIL may clear on the next lookup, while an NXDOMAIN cannot —
+retrying it only spends the attempt budget and the full backoff schedule on an
+outcome that is already decided. `IsDNS` matches both; `IsDNSNotFound` singles
+out the permanent one.
 
 ## Middleware Order
 

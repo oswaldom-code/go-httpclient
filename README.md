@@ -473,7 +473,7 @@ All PRs must pass CI checks before merging.
 
 ## Roadmap
 
-> **Status:** v0.1.0 released (Phase 1 complete). Phase 2 is the next focus.
+> **Status:** v0.2.0 released (Phase 1 complete). Phase 2 is the next focus.
 
 ### Phase 1: Foundation (Completed)
 
